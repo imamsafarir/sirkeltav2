@@ -3,8 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\HomeController;
-// Import Controller Transaksi (Sekarang Logika Manual)
-use App\Http\Controllers\Api\TransactionController;
+use App\Http\Controllers\WebOrderController;
 
 /*
 |--------------------------------------------------------------------------
@@ -42,7 +41,6 @@ Route::middleware(['auth'])->group(function () {
     })->name('dashboard');
 
     // 6. PROSES CHECKOUT (MANUAL)
-    // Mengarah ke TransactionController yang sudah kita bersihkan dari Xendit.
-    // Setelah proses ini, user akan dilempar ke Dashboard dengan pesan sukses.
-    Route::post('/checkout', [TransactionController::class, 'checkout'])->name('checkout');
+    // Rute Checkout (Menggunakan WebOrderController)
+    Route::post('/checkout', [WebOrderController::class, 'checkout'])->name('checkout');
 });
