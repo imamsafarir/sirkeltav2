@@ -27,6 +27,7 @@ class WebOrderController extends Controller
             'promo_code' => 'nullable|string',
         ]);
 
+        /** @var \App\Models\User $user */
         $user = Auth::user();
         $variant = ProductVariant::with('product')->find($request->product_variant_id);
         $productId = $variant->product_id;
@@ -132,22 +133,45 @@ class WebOrderController extends Controller
                     $promoUsed->increment('used_count');
                 }
 
-                // --- E. LOGIKA PEMBAYARAN (MANUAL / GRATIS) ---
+                // --- E. LOGIKA PEMBAYARAN CERDAS (MODIFIKASI DI SINI) ---
 
-                // KASUS 1: GRATIS (Rp 0 karena Promo)
+                // SKENARIO 1: GRATIS (Rp 0 karena Promo)
                 if ($finalPrice <= 0) {
                     $order->update(['status' => 'paid']);
+                    $this->checkGroupFull($group, $variant); // Cek apakah grup jadi penuh?
 
-                    // Cek apakah grup jadi penuh
-                    $this->checkGroupFull($group, $variant);
-
-                    // Redirect ke Sukses (Bukan Dashboard) karena sudah lunas
-                    return redirect()->route('dashboard')->with('success', 'Promo berhasil! Paket Anda aktif (Gratis).');
+                    return redirect()->route('dashboard')
+                        ->with('success', 'Promo berhasil! Paket Anda aktif (Gratis).');
                 }
 
-                // KASUS 2: BAYAR (MANUAL VIA WA)
-                // Lempar ke Dashboard -> Widget WA akan muncul
-                return redirect()->route('dashboard')->with('success', 'Order berhasil! Silakan konfirmasi pembayaran via WhatsApp.');
+                // SKENARIO 2: POTONG SALDO DOMPET (Fitur Baru!)
+                // Kita cek saldo user via relasi wallet
+                // Gunakan lockForUpdate pada user/wallet agar aman
+                $userWallet = $user->wallet()->lockForUpdate()->first();
+
+                if ($userWallet && $userWallet->balance >= $finalPrice) {
+                    // 1. Lakukan Penarikan Saldo (Pakai fungsi withdraw di Model User)
+                    try {
+                        $user->withdraw($finalPrice, "Pembelian Invoice #" . $invoiceNumber);
+
+                        // 2. Update Status Order jadi PAID (Otomatis Lunas!)
+                        $order->update(['status' => 'paid']);
+
+                        // 3. Cek Grup Penuh
+                        $this->checkGroupFull($group, $variant);
+
+                        return redirect()->route('dashboard')
+                            ->with('success', 'Pembayaran berhasil menggunakan Saldo Dompet!');
+                    } catch (\Exception $e) {
+                        // Jaga-jaga jika ada error saat withdraw
+                        // Lanjut ke Skenario 3 (Manual)
+                    }
+                }
+
+                // SKENARIO 3: BAYAR MANUAL (Transfer Bank / WA)
+                // Jika saldo tidak cukup atau tidak punya dompet
+                return redirect()->route('dashboard')
+                    ->with('success', 'Order berhasil! Silakan konfirmasi pembayaran via WhatsApp.');
             });
         } catch (\Exception $e) {
             // Tangkap error (misal promo habis) dan kembalikan ke halaman produk
