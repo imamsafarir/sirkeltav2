@@ -20,12 +20,30 @@ class TransactionController extends Controller
         ]);
 
         $user = $request->user();
-        $variant = ProductVariant::find($request->product_variant_id);
+        // Ambil data varian yang mau dibeli
+        $variant = ProductVariant::with('product')->find($request->product_variant_id);
+        $productId = $variant->product_id;
 
-        // Bungkus dalam database transaction agar aman
+        // --- LOGIKA PEMBATASAN BERDASARKAN PRODUK ---
+        // Cek apakah user punya order yang belum selesai pada PRODUK yang sama
+        // Meskipun variannya berbeda (misal: beli 1 bulan vs 3 bulan)
+        $existingOrder = Order::where('user_id', $user->id)
+            ->whereHas('variant', function ($query) use ($productId) {
+                $query->where('product_id', $productId);
+            })
+            ->whereIn('status', ['pending', 'paid', 'processing'])
+            ->first();
+
+        if ($existingOrder) {
+            return redirect()->back()->withErrors([
+                'error' => "Anda masih memiliki transaksi aktif untuk layanan " . $variant->product->name . ". Selesaikan pesanan sebelumnya terlebih dahulu."
+            ]);
+        }
+        // --- SELESAI LOGIKA PEMBATASAN ---
+
         return DB::transaction(function () use ($user, $variant) {
+            // ... (Logika pembuatan grup dan order tetap sama seperti sebelumnya) ...
 
-            // --- A. LOGIKA CARI/BUAT GRUP (TETAP DIPERTAHANKAN) ---
             $group = Group::where('product_variant_id', $variant->id)
                 ->where('status', 'open')
                 ->where('expired_at', '>', now())
@@ -34,13 +52,11 @@ class TransactionController extends Controller
 
             if ($group) {
                 $terisi = $group->orders()->whereIn('status', ['paid', 'completed', 'processing'])->count();
-                // Jika slot penuh, reset variabel group biar bikin baru
                 if ($terisi >= ($variant->total_slots ?? 5)) {
                     $group = null;
                 }
             }
 
-            // Jika tidak ada grup yang open, buat baru
             if (!$group) {
                 $group = Group::create([
                     'name' => $variant->name . ' - ' . Str::random(5),
@@ -51,7 +67,6 @@ class TransactionController extends Controller
                 ]);
             }
 
-            // --- B. BUAT ORDER LOCAL ---
             $invoiceNumber = 'INV-' . strtoupper(Str::random(6)) . date('dmY');
 
             $order = Order::create([
@@ -60,15 +75,11 @@ class TransactionController extends Controller
                 'product_variant_id' => $variant->id,
                 'invoice_number' => $invoiceNumber,
                 'amount' => $variant->price,
-                'status' => 'pending', // Status awal pending
-                // 'payment_url' => null, // Tidak ada URL pembayaran
+                'status' => 'pending',
+                'payment_url' => null,
             ]);
 
-            // --- C. BYPASS XENDIT (LANGSUNG SUKSES) ---
-            // Kita matikan koneksi ke Xendit.
-            // Langsung redirect user ke dashboard.
-
-            return redirect()->route('dashboard')->with('success', 'Order berhasil dibuat! Silakan hubungi admin untuk pembayaran manual.');
+            return redirect()->route('dashboard')->with('success', 'Order berhasil dibuat!');
         });
     }
 }

@@ -21,55 +21,38 @@
 
                 <div class="mt-2 md:mt-0">
                     @if ($order->status === 'pending')
-                        {{-- TOMBOL PEMICU MODAL --}}
                         <x-filament::modal id="payment-modal" width="md">
                             <x-slot name="trigger">
-                                <x-filament::button color="primary" icon="heroicon-m-credit-card"
-                                    style="background-color: #4f46e5;">
-                                    Bayar Sekarang
+                                <x-filament::button color="success" icon="heroicon-m-chat-bubble-left-right"
+                                    style="background-color: #22c55e;">
+                                    Konfirmasi Pembayaran
                                 </x-filament::button>
                             </x-slot>
 
                             <x-slot name="heading">
-                                Pilih Metode Pembayaran
+                                Pembayaran Manual via WhatsApp
                             </x-slot>
 
-                            <div class="space-y-4 py-4">
-                                <p class="text-sm text-gray-600 dark:text-gray-400 text-center">
-                                    Silakan pilih metode pembayaran untuk invoice <br>
-                                    <span
-                                        class="font-bold text-gray-900 dark:text-white">{{ $order->invoice_number }}</span>
+                            <div class="space-y-4 py-4 text-center">
+                                <p class="text-sm text-gray-600 dark:text-gray-400">
+                                    Sistem pembayaran otomatis sedang dinonaktifkan. Silakan hubungi Admin untuk
+                                    instruksi transfer dan kirim bukti bayar.
                                 </p>
 
-                                {{-- Opsi 1: Otomatis (Xendit) --}}
-                                @if ($order->payment_url)
-                                    <a href="{{ $order->payment_url }}" target="_blank"
-                                        class="flex items-center justify-between p-4 border rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition border-primary-500">
-                                        <div>
-                                            <p class="font-bold text-primary-600">Otomatis (Xendit)</p>
-                                            <p class="text-xs text-gray-500">QRIS, VA, E-Wallet (Proses Instan)</p>
-                                        </div>
-                                        <x-heroicon-m-chevron-right class="w-5 h-5 text-primary-500" />
-                                    </a>
-                                @endif
+                                <div
+                                    class="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-dashed border-gray-300 dark:border-gray-600">
+                                    <p class="text-xs text-gray-500 uppercase">Total yang harus dibayar:</p>
+                                    <p class="text-xl font-bold text-gray-900 dark:text-white">Rp
+                                        {{ number_format($order->amount, 0, ',', '.') }}</p>
+                                </div>
 
-                                {{-- Opsi 2: Manual (WhatsApp) --}}
-                                <a href="https://wa.me/628123456789?text=Halo+Admin,+saya+mau+konfirmasi+pembayaran+manual+untuk+Invoice+{{ $order->invoice_number }}"
+                                <a href="https://wa.me/628123456789?text=Halo+Admin,+saya+ingin+konfirmasi+pembayaran+untuk+Invoice+{{ $order->invoice_number }}"
                                     target="_blank"
-                                    class="flex items-center justify-between p-4 border rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition border-success-500">
-                                    <div>
-                                        <p class="font-bold text-success-600">Manual (WhatsApp)</p>
-                                        <p class="text-xs text-gray-500">Transfer Bank & Kirim Bukti</p>
-                                    </div>
-                                    <x-heroicon-m-chat-bubble-left-right class="w-5 h-5 text-success-500" />
+                                    class="flex items-center justify-center gap-2 w-full p-3 bg-green-500 text-white rounded-xl font-bold hover:bg-green-600 transition">
+                                    <x-heroicon-m-chat-bubble-left-right class="w-5 h-5" />
+                                    Chat Admin Sekarang
                                 </a>
                             </div>
-
-                            <x-slot name="footer">
-                                <div class="text-center text-xs text-gray-400">
-                                    Total Tagihan: Rp {{ number_format($order->amount, 0, ',', '.') }}
-                                </div>
-                            </x-slot>
                         </x-filament::modal>
                     @elseif($order->status === 'completed')
                         <span class="px-3 py-1 text-xs font-bold rounded-full"
@@ -78,7 +61,6 @@
                 </div>
             </div>
 
-            {{-- PROGRESS BAR TETAP SAMA SEPERTI SEBELUMNYA --}}
             @php
                 $progress = 0;
                 $status = $order->status;
@@ -94,9 +76,6 @@
                 if ($status === 'completed') {
                     $progress = 100;
                 }
-                if ($status === 'failed' || $status === 'canceled') {
-                    $progress = 0;
-                }
 
                 $colorGray = '#e5e7eb';
                 $colorGreen = '#22c55e';
@@ -110,7 +89,6 @@
                 <div class="absolute top-1/2 left-0 h-2 rounded-full -translate-y-1/2 transition-all duration-1000 shadow-md"
                     style="width: {{ $progress }}%; background-color: {{ $colorGreen }};"></div>
                 <div class="relative flex justify-between w-full">
-                    {{-- Langkah 1 --}}
                     <div class="flex flex-col items-center">
                         <div class="w-8 h-8 flex items-center justify-center rounded-full z-10 border-2 border-white dark:border-gray-800 shadow-sm"
                             style="background-color: {{ $progress >= 10 ? $colorGreen : $colorGray }}; color: {{ $progress >= 10 ? 'white' : '#6b7280' }};">
@@ -118,7 +96,6 @@
                         <span class="text-xs font-bold mt-2"
                             style="color: {{ $progress >= 10 ? $colorTextGreen : $colorTextGray }};"> Order </span>
                     </div>
-                    {{-- Langkah 2 --}}
                     <div class="flex flex-col items-center">
                         <div class="w-8 h-8 flex items-center justify-center rounded-full z-10 border-2 border-white dark:border-gray-800 shadow-sm"
                             style="background-color: {{ $progress >= 40 ? $colorGreen : $colorGray }}; color: {{ $progress >= 40 ? 'white' : '#6b7280' }};">
@@ -126,7 +103,6 @@
                         <span class="text-xs font-bold mt-2"
                             style="color: {{ $progress >= 40 ? $colorTextGreen : $colorTextGray }};"> Bayar </span>
                     </div>
-                    {{-- Langkah 3 --}}
                     <div class="flex flex-col items-center">
                         <div class="w-8 h-8 flex items-center justify-center rounded-full z-10 border-2 border-white dark:border-gray-800 shadow-sm"
                             style="background-color: {{ $progress >= 70 ? $colorGreen : $colorGray }}; color: {{ $progress >= 70 ? 'white' : '#6b7280' }};">
@@ -134,7 +110,6 @@
                         <span class="text-xs font-bold mt-2 text-center"
                             style="color: {{ $progress >= 70 ? $colorTextGreen : $colorTextGray }};"> Proses </span>
                     </div>
-                    {{-- Langkah 4 --}}
                     <div class="flex flex-col items-center">
                         <div class="w-8 h-8 flex items-center justify-center rounded-full z-10 border-2 border-white dark:border-gray-800 shadow-sm"
                             style="background-color: {{ $progress >= 100 ? $colorGreen : $colorGray }}; color: {{ $progress >= 100 ? 'white' : '#6b7280' }};">
@@ -153,22 +128,16 @@
                 class="mt-6 p-4 rounded-lg border text-sm text-center bg-gray-50 dark:bg-gray-800 dark:border-gray-700">
                 @if ($status === 'pending')
                     <p class="font-bold text-lg" style="color: #ef4444;">⏳ Menunggu Pembayaran</p>
-                    <p class="text-gray-600 dark:text-gray-300 mt-1">Silakan klik tombol "Bayar Sekarang" di atas.</p>
+                    <p class="text-gray-600 dark:text-gray-300 mt-1">Silakan klik tombol "Konfirmasi Pembayaran" untuk
+                        instruksi manual.</p>
                 @elseif($status === 'paid')
-                    <p class="font-bold text-lg" style="color: #3b82f6;">💰 Pembayaran Diterima!</p>
-                    <p class="text-gray-600 dark:text-gray-300 mt-1">Sistem sedang mencarikan slot grup untuk Anda...
-                    </p>
-                @elseif($status === 'processing')
-                    <p class="font-bold text-lg" style="color: #8b5cf6;">⚙️ Sedang Disiapkan Admin</p>
-                    <p class="text-gray-600 dark:text-gray-300 mt-1">Admin sedang membuat akun. Mohon tunggu maksimal 24
-                        jam.</p>
-                @elseif($status === 'completed')
-                    <p class="font-bold text-lg" style="color: #22c55e;">✅ Akun Siap!</p>
-                    <p class="text-gray-600 dark:text-gray-300 mt-1">Cek tabel di bawah untuk melihat Email & Password
-                        Anda.</p>
+                    <p class="font-bold text-lg" style="color: #3b82f6;">💰 Pembayaran Dikonfirmasi!</p>
+                    <p class="text-gray-600 dark:text-gray-300 mt-1">Admin akan segera memproses pesanan Anda.</p>
+                @else
+                    {{-- Status lainnya tetap sama --}}
+                    <p class="font-bold text-lg" style="color: #8b5cf6;">⚙️ Sedang Diproses</p>
                 @endif
             </div>
-
         @endif
     </x-filament::section>
 </x-filament::widget>

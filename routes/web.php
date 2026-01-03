@@ -3,7 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
 use App\Http\Controllers\HomeController;
-// PENTING: Kita panggil Controller yang sudah ada logika Xendit-nya
+// Import Controller Transaksi (Sekarang Logika Manual)
 use App\Http\Controllers\Api\TransactionController;
 
 /*
@@ -36,13 +36,13 @@ Route::post('/logout', function () {
 Route::middleware(['auth'])->group(function () {
 
     // 5. Dashboard User
-    // (Sementara redirect ke Admin Panel, nanti bisa buat halaman sendiri)
+    // Redirect ke Panel Admin/Customer setelah login
     Route::get('/dashboard', function () {
         return redirect('/admin');
     })->name('dashboard');
 
-    // 6. CHECKOUT (Ini Kuncinya!)
-    // Kita arahkan ke 'TransactionController' method 'checkout'
-    // Method ini yang akan melempar user ke Xendit
+    // 6. PROSES CHECKOUT (MANUAL)
+    // Mengarah ke TransactionController yang sudah kita bersihkan dari Xendit.
+    // Setelah proses ini, user akan dilempar ke Dashboard dengan pesan sukses.
     Route::post('/checkout', [TransactionController::class, 'checkout'])->name('checkout');
 });

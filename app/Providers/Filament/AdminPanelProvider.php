@@ -20,10 +20,6 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 use App\Filament\Pages\Auth\Register;
 use Filament\Http\Responses\Auth\Contracts\LoginResponse as LoginResponseContract;
 use App\Http\Responses\LoginResponse;
-// use Spatie\LaravelSettings\Settings;
-use Filament\SpatieLaravelSettingsPlugin; // <--- IMPORT 1
-use App\Filament\Pages\ManagePayment;
-
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -34,12 +30,6 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->login()
-            ->plugins([
-                SpatieLaravelSettingsPlugin::make()
-                    ->pages([
-                        ManagePayment::class, // <--- DAFTARKAN DISINI
-                    ]),
-            ])
             ->registration(Register::class)
             // --- TAMBAHKAN INI ---
             ->brandName('SIRKELTA Admin') // Nama Aplikasi
