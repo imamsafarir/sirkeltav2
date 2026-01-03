@@ -8,6 +8,7 @@ use Filament\Widgets\TableWidget as BaseWidget;
 use App\Models\Order;
 use Filament\Infolists;
 use Filament\Infolists\Infolist;
+use Illuminate\Support\Facades\Auth;
 
 class LatestOrders extends BaseWidget
 {
@@ -16,40 +17,51 @@ class LatestOrders extends BaseWidget
 
     protected static ?string $heading = 'Transaksi Terbaru';
 
+    // 1. IZINKAN SEMUA USER LOGIN MELIHAT WIDGET INI
+    public static function canView(): bool
+    {
+        return Auth::check();
+    }
+
     public function table(Table $table): Table
     {
         return $table
             ->query(
-                Order::query()->latest()->limit(5)
+                // 2. LOGIKA FILTER:
+                // Jika Admin -> Ambil semua
+                // Jika User  -> Ambil punya sendiri
+                Order::query()
+                    ->when(Auth::user()->role !== 'admin', function ($query) {
+                        return $query->where('user_id', Auth::id());
+                    })
+                    ->latest()
+                    ->limit(5)
             )
             ->paginated(false)
             ->columns([
-                // 1. CUSTOMER
+                // 3. NAMA CUSTOMER (Sembunyikan jika yang login adalah Customer)
                 Tables\Columns\TextColumn::make('user.name')
                     ->label('Customer')
                     ->icon('heroicon-m-user')
                     ->weight('bold')
-                    ->searchable(),
+                    ->searchable()
+                    ->visible(fn() => Auth::user()->role === 'admin'),
 
-                // 2. PRODUK (DIPERBAIKI)
+                // 4. PRODUK
                 Tables\Columns\TextColumn::make('product_info')
                     ->label('Produk')
                     ->state(function (Order $record) {
-                        if ($record->type === 'topup') {
-                            return 'Top Up Saldo';
-                        }
+                        if ($record->type === 'topup') return 'Top Up Saldo';
                         return $record->variant?->product?->name ?? 'Produk Dihapus';
                     })
                     ->description(function (Order $record) {
-                        if ($record->type === 'topup') {
-                            return 'Deposit Dompet';
-                        }
+                        if ($record->type === 'topup') return 'Deposit Dompet';
                         return $record->variant?->name ?? '-';
                     })
                     ->icon(fn(Order $record) => $record->type === 'topup' ? 'heroicon-o-currency-dollar' : 'heroicon-o-shopping-bag')
                     ->wrap(),
 
-                // 3. HARGA
+                // 5. HARGA
                 Tables\Columns\TextColumn::make('amount')
                     ->label('Total')
                     ->money('IDR')
@@ -57,7 +69,7 @@ class LatestOrders extends BaseWidget
                     ->weight('bold')
                     ->color('success'),
 
-                // 4. STATUS
+                // 6. STATUS
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
@@ -67,26 +79,17 @@ class LatestOrders extends BaseWidget
                         'failed', 'canceled' => 'danger',
                         default => 'gray',
                     })
-                    ->icon(fn(string $state): string => match ($state) {
-                        'pending' => 'heroicon-m-clock',
-                        'paid' => 'heroicon-m-banknotes',
-                        'processing' => 'heroicon-m-cog',
-                        'completed' => 'heroicon-m-check-badge',
-                        'failed', 'canceled' => 'heroicon-m-x-circle',
-                        default => 'heroicon-m-question-mark-circle',
-                    })
                     ->formatStateUsing(fn(string $state): string => ucfirst($state)),
 
-                // 5. WAKTU
+                // 7. WAKTU (VERSI BERSIH - TANPA TOOLTIP)
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Waktu')
                     ->since()
                     ->sortable()
-                    ->color('gray')
-                    ->tooltip(fn(Order $record): string => $record->created_at->format('d M Y H:i')),
+                    ->color('gray'),
             ])
             ->actions([
-                // Tombol Buka Halaman Full (Edit)
+                // Tombol Edit (Hanya Admin)
                 Tables\Actions\Action::make('open')
                     ->label('Edit')
                     ->icon('heroicon-m-pencil-square')
@@ -94,9 +97,10 @@ class LatestOrders extends BaseWidget
                     ->color('gray')
                     ->button()
                     ->outlined()
-                    ->size('xs'),
+                    ->size('xs')
+                    ->visible(fn() => Auth::user()->role === 'admin'),
 
-                // --- TOMBOL LIHAT DETAIL (POPUP) ---
+                // Tombol Lihat Detail (Admin & User)
                 Tables\Actions\ViewAction::make()
                     ->label('Lihat')
                     ->modalHeading('Rincian Pesanan')
@@ -104,12 +108,12 @@ class LatestOrders extends BaseWidget
             ]);
     }
 
-    // Fungsi Layout Infolist (Disamakan dengan OrderResource)
+    // Fungsi Layout Infolist (Sinkron dengan OrderResource)
     public static function infolist(Infolist $infolist): Infolist
     {
         return $infolist
             ->schema([
-                // 1. DATA AKUN PREMIUM (Hanya muncul jika Completed DAN Produk)
+                // 1. DATA AKUN PREMIUM (Lengkap dengan Catatan Khusus)
                 Infolists\Components\Section::make('Akun Premium')
                     ->description('Data akun untuk customer.')
                     ->icon('heroicon-m-gift')
@@ -132,12 +136,25 @@ class LatestOrders extends BaseWidget
                             ->color('primary')
                             ->default('Menunggu Admin...'),
 
-                        Infolists\Components\TextEntry::make('group.additional_info')
-                            ->label('Catatan')
-                            ->icon('heroicon-m-information-circle')
+                        // FITUR CATATAN SPESIFIK USER
+                        Infolists\Components\TextEntry::make('custom_note')
+                            ->label('Catatan Khusus Untuk Anda')
+                            ->icon('heroicon-m-sparkles')
+                            ->color('warning')
+                            ->weight('bold')
                             ->columnSpanFull()
-                            ->markdown()
-                            ->placeholder('-'),
+                            ->state(function (Order $record) {
+                                $notes = $record->group->additional_info ?? [];
+                                if (is_array($notes)) {
+                                    foreach ($notes as $item) {
+                                        if (isset($item['user_id']) && $item['user_id'] == $record->user_id) {
+                                            return $item['note'];
+                                        }
+                                    }
+                                }
+                                return 'Tidak ada catatan khusus.';
+                            })
+                            ->visible(fn($state) => $state !== 'Tidak ada catatan khusus.'),
                     ])
                     ->columns(2)
                     ->visible(fn($record) => $record->status === 'completed' && $record->type === 'product'),
@@ -153,7 +170,6 @@ class LatestOrders extends BaseWidget
                             ->label('Tanggal')
                             ->dateTime('d M Y H:i'),
 
-                        // PERBAIKAN: Gunakan 'state' untuk handle Top Up
                         Infolists\Components\TextEntry::make('product_name')
                             ->label('Produk')
                             ->state(fn(Order $record) => $record->type === 'topup' ? 'Top Up Saldo' : $record->variant?->product?->name),

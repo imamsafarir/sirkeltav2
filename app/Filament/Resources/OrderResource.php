@@ -75,15 +75,13 @@ class OrderResource extends Resource
                     ->weight('bold')
                     ->copyable(),
 
-                // --- PERBAIKAN UTAMA DI SINI ---
-                // Jangan akses relasi langsung, pakai logika cek Tipe Order
+                // --- LOGIKA PRODUK / TOP UP ---
                 Tables\Columns\TextColumn::make('product_info')
                     ->label('Produk / Layanan')
                     ->state(function (Order $record) {
                         if ($record->type === 'topup') {
                             return 'Top Up Saldo';
                         }
-                        // Gunakan tanda tanya (?) agar aman (Null Safe)
                         return $record->variant?->product?->name ?? 'Produk Tidak Ditemukan';
                     })
                     ->description(function (Order $record) {
@@ -181,11 +179,32 @@ class OrderResource extends Resource
                             ->copyable()
                             ->color('primary'),
 
-                        Infolists\Components\TextEntry::make('group.additional_info')
-                            ->label('Catatan Penting')
-                            ->icon('heroicon-m-information-circle')
+                        // --- FITUR BARU: CATATAN SPESIFIK USER ---
+                        // Mengambil dari JSON Repeater di Group, difilter berdasarkan User ID
+                        Infolists\Components\TextEntry::make('custom_note')
+                            ->label('Catatan Khusus Untuk Anda')
+                            ->icon('heroicon-m-sparkles')
+                            ->color('warning')
+                            ->weight('bold')
                             ->columnSpanFull()
-                            ->markdown(),
+                            ->state(function (Order $record) {
+                                // Ambil data JSON dari grup
+                                $notes = $record->group->additional_info ?? [];
+
+                                // Cek apakah data valid array
+                                if (is_array($notes)) {
+                                    foreach ($notes as $item) {
+                                        // Cek jika user_id di catatan sama dengan user pemilik order ini
+                                        // (Gunakan == untuk handle string vs int comparison)
+                                        if (isset($item['user_id']) && $item['user_id'] == $record->user_id) {
+                                            return $item['note'];
+                                        }
+                                    }
+                                }
+                                return 'Tidak ada catatan khusus.';
+                            })
+                            // Sembunyikan jika tidak ada catatan
+                            ->visible(fn($state) => $state !== 'Tidak ada catatan khusus.'),
                     ])
                     ->columns(2)
                     // PENTING: Hide jika status belum completed ATAU tipe order adalah topup
@@ -202,7 +221,6 @@ class OrderResource extends Resource
                             ->label('Tanggal Order')
                             ->dateTime('d M Y H:i'),
 
-                        // PERBAIKAN: Gunakan 'state' custom untuk handle Top Up
                         Infolists\Components\TextEntry::make('product_name')
                             ->label('Produk')
                             ->state(fn(Order $record) => $record->type === 'topup' ? 'Top Up Saldo' : $record->variant?->product?->name),
@@ -225,7 +243,6 @@ class OrderResource extends Resource
                                 default => 'gray',
                             }),
 
-                        // Hanya muncul jika produk (bukan topup)
                         Infolists\Components\TextEntry::make('group.id')
                             ->label('ID Grup Patungan')
                             ->icon('heroicon-m-user-group')
@@ -253,13 +270,11 @@ class OrderResource extends Resource
 
     public static function getNavigationBadge(): ?string
     {
-        // 1. ADMIN: Melihat jumlah order PENDING
         if (Auth::user()->role === 'admin') {
             $count = Order::where('status', 'pending')->count();
             return $count > 0 ? (string) $count : null;
         }
 
-        // 2. CUSTOMER: Melihat jumlah order COMPLETED
         return (string) Order::query()
             ->where('user_id', Auth::id())
             ->where('status', 'completed')

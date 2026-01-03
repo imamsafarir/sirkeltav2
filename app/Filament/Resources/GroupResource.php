@@ -27,7 +27,7 @@ class GroupResource extends Resource
     {
         return $form
             ->schema([
-                // --- BAGIAN 1: INFO GRUP (Standard) ---
+                // --- BAGIAN 1: INFO GRUP ---
                 Forms\Components\Section::make('Informasi Grup')
                     ->schema([
                         Forms\Components\Select::make('product_variant_id')
@@ -42,9 +42,9 @@ class GroupResource extends Resource
                             ->required(),
                     ])->columns(2),
 
-                // --- BAGIAN 2: STATUS & KREDENSIAL (Bagian Penting) ---
-                Forms\Components\Section::make('Proses Order')
-                    ->description('Isi data akun di sini jika grup sudah penuh.')
+                // --- BAGIAN 2: PROSES ORDER (DIPERBAIKI) ---
+                Forms\Components\Section::make('Proses Order & Kredensial')
+                    ->description('Isi data akun saat status Processing atau Completed.')
                     ->schema([
                         Forms\Components\Select::make('status')
                             ->options([
@@ -55,24 +55,50 @@ class GroupResource extends Resource
                                 'expired' => 'Expired (Gagal)',
                             ])
                             ->required()
-                            ->reactive(), // Agar form di bawah bisa bereaksi
+                            ->reactive(), // PENTING: Agar form bereaksi live
 
-                        // --- INPUT RAHASIA (Hanya diisi Admin) ---
-                        Forms\Components\TextInput::make('account_email')
-                            ->email()
-                            ->label('Email Akun (Netflix/dll)')
+                        // --- KREDENSIAL UMUM (Untuk Semua) ---
+                        Forms\Components\Group::make()
+                            ->schema([
+                                Forms\Components\TextInput::make('account_email')
+                                    ->email()
+                                    ->label('Email Akun Login')
+                                    ->prefixIcon('heroicon-m-envelope'),
+
+                                Forms\Components\TextInput::make('account_password')
+                                    ->label('Password Akun')
+                                    ->prefixIcon('heroicon-m-key'),
+                            ])
+                            ->columns(2)
                             ->visible(fn($get) => in_array($get('status'), ['processing', 'completed'])),
 
-                        Forms\Components\TextInput::make('account_password')
-                            ->label('Password Akun')
-                            ->visible(fn($get) => in_array($get('status'), ['processing', 'completed'])),
+                        // --- CATATAN SPESIFIK (TAGGING USER) ---
+                        // Ini fitur baru: Repeater untuk catatan khusus per user
+                        Forms\Components\Repeater::make('additional_info')
+                            ->label('Catatan / Pembagian Profil')
+                            ->schema([
+                                Forms\Components\Select::make('user_id')
+                                    ->label('Pilih Peserta')
+                                    // Ambil list user yang sudah join di grup ini
+                                    ->options(function ($record) {
+                                        if (!$record) return [];
+                                        return $record->orders()
+                                            ->with('user')
+                                            ->get()
+                                            ->pluck('user.name', 'user.id');
+                                    })
+                                    ->searchable()
+                                    ->required(),
 
-                        Forms\Components\Textarea::make('additional_info')
-                            ->label('Catatan untuk User')
-                            ->placeholder('Contoh: Dilarang ubah PIN, pakai Profil 2.')
-                            ->columnSpanFull()
+                                Forms\Components\TextInput::make('note')
+                                    ->label('Catatan Khusus (Misal: Pakai Profil 2)')
+                                    ->required(),
+                            ])
+                            ->itemLabel(fn(array $state): ?string => $state['note'] ?? null)
+                            ->columns(2)
+                            ->addActionLabel('Tambah Catatan Peserta')
                             ->visible(fn($get) => in_array($get('status'), ['processing', 'completed'])),
-                    ])->columns(2),
+                    ]),
             ]);
     }
 

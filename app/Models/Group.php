@@ -22,6 +22,7 @@ class Group extends Model
 
     protected $casts = [
         'expired_at' => 'datetime',
+        'additional_info' => 'array',
     ];
 
     // --- TAMBAHKAN KODE INI (OTOMATISASI STATUS) ---
