@@ -20,8 +20,10 @@ class CustomerOrderProgress extends Widget
     // Kirim data order ke view
     protected function getViewData(): array
     {
-        // Ambil 1 order terakhir milik user ini
+        // PERBAIKAN: Hanya ambil order dengan type 'product'
+        // Top Up (type='topup') akan diabaikan oleh widget ini
         $latestOrder = Order::where('user_id', Auth::id())
+            ->where('type', 'product') // <--- FILTER INI KUNCINYA
             ->latest()
             ->first();
 
@@ -30,9 +32,13 @@ class CustomerOrderProgress extends Widget
         ];
     }
 
-    // Hanya tampilkan widget jika user punya order
+    // Hanya tampilkan widget jika user punya order PRODUK
     public static function canView(): bool
     {
-        return Auth::check() && Order::where('user_id', Auth::id())->exists();
+        // Cek juga di sini, supaya kalau user cuma pernah Top Up, widget ini tidak muncul (karena tidak relevan)
+        return Auth::check() &&
+            Order::where('user_id', Auth::id())
+            ->where('type', 'product') // <--- FILTER INI JUGA
+            ->exists();
     }
 }

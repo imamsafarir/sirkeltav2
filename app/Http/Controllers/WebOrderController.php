@@ -6,22 +6,23 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductVariant;
 use App\Models\Group;
 use App\Models\Order;
-use App\Models\PromoCode; // Pastikan Model PromoCode ada
+use App\Models\PromoCode;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Midtrans\Config;
+use Midtrans\Snap;
 
 class WebOrderController extends Controller
 {
+    /**
+     * LOGIKA 1: BUAT ORDER PRODUK (Checkout)
+     */
     public function checkout(Request $request)
     {
-        // 1. Cek Login
-        if (!Auth::check()) {
-            return redirect()->route('login');
-        }
+        if (!Auth::check()) return redirect()->route('login');
 
-        // 2. Validasi Input
         $request->validate([
             'product_variant_id' => 'required|exists:product_variants,id',
             'promo_code' => 'nullable|string',
@@ -30,166 +31,238 @@ class WebOrderController extends Controller
         /** @var \App\Models\User $user */
         $user = Auth::user();
         $variant = ProductVariant::with('product')->find($request->product_variant_id);
-        $productId = $variant->product_id;
 
-        // --- A. LOGIKA PEMBATASAN (ANTI SPAM) ---
-        // Cek apakah user memiliki order aktif (Pending/Paid/Processing) di PRODUK yang sama
+        // Cek Anti Spam (Hanya untuk produk yang sama)
         $existingOrder = Order::where('user_id', $user->id)
-            ->whereHas('variant', function ($query) use ($productId) {
-                $query->where('product_id', $productId);
-            })
+            ->where('product_variant_id', $variant->id)
             ->whereIn('status', ['pending', 'paid', 'processing'])
             ->first();
 
         if ($existingOrder) {
-            return redirect()->back()->withErrors([
-                'error' => "Anda masih memiliki transaksi aktif untuk layanan " . $variant->product->name . ". Harap selesaikan (Invoice: {$existingOrder->invoice_number}) sebelum membeli lagi."
-            ]);
+            return back()->withErrors(['error' => "Selesaikan transaksi sebelumnya (Invoice: {$existingOrder->invoice_number})."]);
         }
 
         try {
             return DB::transaction(function () use ($user, $variant, $request) {
-
-                // --- B. LOGIKA PROMO CODE ---
+                // Hitung Harga
                 $finalPrice = $variant->price;
                 $promoUsed = null;
 
                 if ($request->filled('promo_code')) {
                     $code = strtoupper(trim($request->promo_code));
-
-                    // Kunci baris promo biar aman dari rebutan (Race Condition)
                     $promo = PromoCode::where('code', $code)->lockForUpdate()->first();
-
-                    // Validasi Promo Ketat
-                    if (!$promo) throw new \Exception("Kode promo '$code' tidak ditemukan.");
-                    if (!$promo->is_active) throw new \Exception("Kode promo sedang non-aktif.");
-                    if ($promo->expired_at && $promo->expired_at < now()) throw new \Exception("Kode promo sudah kadaluarsa.");
-                    if ($promo->usage_limit > 0 && $promo->used_count >= $promo->usage_limit) throw new \Exception("Kuota promo sudah habis.");
-
-                    // Hitung Diskon (Fixed Amount)
-                    // Jika butuh persentase, tambahkan logika di sini
-                    if ($promo->type == 'fixed') {
-                        $finalPrice = $variant->price - $promo->discount_amount;
+                    if (!$promo || !$promo->is_active || ($promo->usage_limit > 0 && $promo->used_count >= $promo->usage_limit)) {
+                        throw new \Exception("Kode promo tidak valid.");
                     }
-
+                    if ($promo->type == 'fixed') $finalPrice -= $promo->discount_amount;
                     if ($finalPrice < 0) $finalPrice = 0;
                     $promoUsed = $promo;
                 }
 
-                // --- C. LOGIKA PENCARIAN GRUP (PRIORITAS ID TERKECIL) ---
-                $selectedGroup = null;
+                // Cari Grup
+                $selectedGroup = $this->findOrCreateGroup($variant);
 
-                // Ambil semua kandidat grup yang OPEN
-                $candidates = Group::where('product_variant_id', $variant->id)
-                    ->where('status', 'open')
-                    ->where('expired_at', '>', now())
-                    ->orderBy('id', 'asc') // Utamakan grup lama dulu
-                    ->lockForUpdate()
-                    ->get();
-
-                foreach ($candidates as $candidate) {
-                    // Hitung slot (termasuk yang pending biar tidak overbook)
-                    $terisi = $candidate->orders()
-                        ->whereIn('status', ['paid', 'processing', 'completed', 'pending'])
-                        ->count();
-
-                    if ($terisi < ($variant->total_slots ?? 5)) {
-                        $selectedGroup = $candidate;
-                        break; // Ketemu grup kosong! Stop looping.
-                    } else {
-                        // Kalau ternyata penuh, tandai Full sekalian bersih-bersih
-                        $candidate->update(['status' => 'full']);
-                    }
-                }
-
-                // Jika tidak ada grup kosong, buat baru
-                if (!$selectedGroup) {
-                    $selectedGroup = Group::create([
-                        'name' => $variant->name . ' - ' . Str::random(5),
-                        'product_variant_id' => $variant->id,
-                        'status' => 'open',
-                        'max_members' => $variant->total_slots ?? 5,
-                        'expired_at' => now()->addHours($variant->group_timeout_hours ?? 24)
-                    ]);
-                }
-
-                $group = $selectedGroup;
-
-                // --- D. BUAT ORDER ---
+                // SIMPAN KE TABEL ORDERS (Type: Product)
                 $invoiceNumber = 'INV-' . strtoupper(Str::random(6)) . date('dmY');
-
                 $order = Order::create([
                     'user_id' => $user->id,
-                    'group_id' => $group->id,
+                    'type' => 'product', // Tanda bahwa ini beli produk
+                    'group_id' => $selectedGroup->id,
                     'product_variant_id' => $variant->id,
                     'invoice_number' => $invoiceNumber,
-                    'amount' => $finalPrice, // Pakai harga setelah diskon
+                    'amount' => $finalPrice,
                     'status' => 'pending',
-                    'payment_url' => null, // Manual
+                    'description' => "Pembelian " . $variant->product->name . " - " . $variant->name
                 ]);
 
-                // Update kuota promo jika dipakai
-                if ($promoUsed) {
-                    $promoUsed->increment('used_count');
-                }
+                if ($promoUsed) $promoUsed->increment('used_count');
 
-                // --- E. LOGIKA PEMBAYARAN CERDAS (MODIFIKASI DI SINI) ---
-
-                // SKENARIO 1: GRATIS (Rp 0 karena Promo)
+                // Jika Gratis
                 if ($finalPrice <= 0) {
                     $order->update(['status' => 'paid']);
-                    $this->checkGroupFull($group, $variant); // Cek apakah grup jadi penuh?
-
-                    return redirect()->route('dashboard')
-                        ->with('success', 'Promo berhasil! Paket Anda aktif (Gratis).');
+                    $this->checkGroupFull($selectedGroup, $variant);
+                    return redirect()->route('dashboard')->with('success', 'Promo Berhasil! Paket Gratis.');
                 }
 
-                // SKENARIO 2: POTONG SALDO DOMPET (Fitur Baru!)
-                // Kita cek saldo user via relasi wallet
-                // Gunakan lockForUpdate pada user/wallet agar aman
-                $userWallet = $user->wallet()->lockForUpdate()->first();
-
-                if ($userWallet && $userWallet->balance >= $finalPrice) {
-                    // 1. Lakukan Penarikan Saldo (Pakai fungsi withdraw di Model User)
-                    try {
-                        $user->withdraw($finalPrice, "Pembelian Invoice #" . $invoiceNumber);
-
-                        // 2. Update Status Order jadi PAID (Otomatis Lunas!)
-                        $order->update(['status' => 'paid']);
-
-                        // 3. Cek Grup Penuh
-                        $this->checkGroupFull($group, $variant);
-
-                        return redirect()->route('dashboard')
-                            ->with('success', 'Pembayaran berhasil menggunakan Saldo Dompet!');
-                    } catch (\Exception $e) {
-                        // Jaga-jaga jika ada error saat withdraw
-                        // Lanjut ke Skenario 3 (Manual)
-                    }
-                }
-
-                // SKENARIO 3: BAYAR MANUAL (Transfer Bank / WA)
-                // Jika saldo tidak cukup atau tidak punya dompet
-                return redirect()->route('dashboard')
-                    ->with('success', 'Order berhasil! Silakan konfirmasi pembayaran via WhatsApp.');
+                return redirect()->route('payment.show', $order->invoice_number);
             });
         } catch (\Exception $e) {
-            // Tangkap error (misal promo habis) dan kembalikan ke halaman produk
             return back()->withErrors(['error' => $e->getMessage()])->withInput();
         }
     }
 
     /**
-     * Helper: Cek apakah grup sudah penuh, jika ya set status 'full'
+     * LOGIKA 2: BUAT TOP UP (Sekarang Disimpan di Tabel ORDERS)
      */
+    public function topUp(Request $request)
+    {
+        $request->validate(['amount' => 'required|numeric|min:10000']);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        // Gunakan prefix TOPUP
+        $invoiceNumber = 'TOPUP-' . strtoupper(Str::random(6)) . date('dmY');
+
+        // SIMPAN KE TABEL ORDERS (Type: Topup)
+        // Group & Variant ID dibiarkan NULL
+        $order = Order::create([
+            'user_id' => $user->id,
+            'type' => 'topup', // Tanda bahwa ini Top Up
+            'invoice_number' => $invoiceNumber,
+            'amount' => $request->amount,
+            'status' => 'pending',
+            'description' => 'Top Up Saldo Dompet'
+        ]);
+
+        // Generate Midtrans Token
+        $this->configureMidtrans();
+        $params = [
+            'transaction_details' => ['order_id' => $invoiceNumber, 'gross_amount' => (int) $request->amount],
+            'customer_details' => ['first_name' => $user->name, 'email' => $user->email],
+        ];
+
+        try {
+            $snapToken = Snap::getSnapToken($params);
+            $order->update(['payment_url' => $snapToken]);
+            return redirect()->route('payment.show', $invoiceNumber);
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * LOGIKA 3: HALAMAN PEMBAYARAN (Unified)
+     * Sekarang tidak perlu cek 2 tabel lagi!
+     */
+    public function showPayment($invoice)
+    {
+        // Cukup cari di satu tabel saja sekarang. Simpel kan?
+        $order = Order::where('invoice_number', $invoice)
+            ->where('user_id', Auth::id())
+            ->firstOrFail();
+
+        if ($order->status !== 'pending') {
+            return redirect()->route('dashboard')->with('success', 'Transaksi sudah diproses.');
+        }
+
+        return view('payment', compact('order'));
+    }
+
+    /**
+     * LOGIKA 4: BAYAR PAKAI SALDO (Tanpa WalletTransaction)
+     */
+    public function payWithWallet($invoice)
+    {
+        $order = Order::where('invoice_number', $invoice)->where('user_id', Auth::id())->firstOrFail();
+
+        // Pastikan ini bayar produk, bukan topup
+        if ($order->type !== 'product') return back()->withErrors(['error' => 'Transaksi tidak valid.']);
+
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        $userWallet = $user->wallet()->lockForUpdate()->first();
+
+        if (!$userWallet || $userWallet->balance < $order->amount) {
+            return back()->withErrors(['error' => 'Saldo kurang.']);
+        }
+
+        try {
+            DB::transaction(function () use ($userWallet, $order) {
+                // 1. Potong Saldo User Langsung
+                $userWallet->decrement('balance', $order->amount);
+
+                // 2. Update Status Order jadi PAID
+                $order->update([
+                    'status' => 'paid',
+                    'description' => $order->description . ' (Paid via Wallet)'
+                ]);
+
+                // 3. Cek Grup
+                $this->checkGroupFull($order->group, $order->variant);
+            });
+
+            return redirect()->route('dashboard')->with('success', 'Berhasil bayar pakai saldo!');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Gagal: ' . $e->getMessage()]);
+        }
+    }
+
+    /**
+     * LOGIKA 5: BAYAR PAKAI MIDTRANS (AJAX)
+     */
+    public function payWithMidtrans($invoice)
+    {
+        $order = Order::where('invoice_number', $invoice)->where('user_id', Auth::id())->firstOrFail();
+
+        if ($order->payment_url) return response()->json(['snap_token' => $order->payment_url]);
+
+        $this->configureMidtrans();
+
+        // Nama Item tergantung tipe
+        $itemName = $order->type === 'topup' ? 'Top Up Saldo' : substr($order->description, 0, 50);
+
+        $params = [
+            'transaction_details' => ['order_id' => $order->invoice_number, 'gross_amount' => (int) $order->amount],
+            'customer_details' => ['first_name' => Auth::user()->name, 'email' => Auth::user()->email],
+            'item_details' => [[
+                'id' => $order->type === 'topup' ? 'TOPUP' : $order->product_variant_id,
+                'price' => (int) $order->amount,
+                'quantity' => 1,
+                'name' => $itemName,
+            ]]
+        ];
+
+        try {
+            $snapToken = Snap::getSnapToken($params);
+            $order->update(['payment_url' => $snapToken]);
+            return response()->json(['snap_token' => $snapToken]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    // --- HELPER FUNCTIONS ---
+
+    private function configureMidtrans()
+    {
+        Config::$serverKey = config('midtrans.server_key');
+        Config::$isProduction = config('midtrans.is_production');
+        Config::$isSanitized = config('midtrans.is_sanitized');
+        Config::$is3ds = config('midtrans.is_3ds');
+    }
+
+    private function findOrCreateGroup($variant)
+    {
+        $candidates = Group::where('product_variant_id', $variant->id)
+            ->where('status', 'open')->where('expired_at', '>', now())
+            ->orderBy('id', 'asc')->lockForUpdate()->get();
+
+        foreach ($candidates as $candidate) {
+            if ($candidate->orders()->whereIn('status', ['paid', 'processing', 'completed', 'pending'])->count() < ($variant->total_slots ?? 5)) {
+                return $candidate;
+            } else {
+                $candidate->update(['status' => 'full']);
+            }
+        }
+        return Group::create([
+            'name' => $variant->name . ' - ' . Str::random(5),
+            'product_variant_id' => $variant->id,
+            'status' => 'open',
+            'max_members' => $variant->total_slots ?? 5,
+            'expired_at' => now()->addHours($variant->group_timeout_hours ?? 24)
+        ]);
+    }
+
     private function checkGroupFull($group, $variant)
     {
-        $currentMembers = $group->orders()
-            ->whereIn('status', ['paid', 'processing', 'completed']) // Hanya hitung yang pasti bayar
-            ->count();
+        if (!$group) return;
+        $currentMembers = $group->orders()->whereIn('status', ['paid', 'processing', 'completed'])->count();
+        if ($currentMembers >= ($variant->total_slots ?? 5)) $group->update(['status' => 'full']);
+    }
 
-        if ($currentMembers >= ($variant->total_slots ?? 5)) {
-            $group->update(['status' => 'full']);
-        }
+    public function showTopUpForm()
+    {
+        return view('topup');
     }
 }

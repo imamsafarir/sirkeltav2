@@ -57,7 +57,7 @@ class DatabaseSeeder extends Seeder
             'product_id' => $netflix->id,
             'name' => 'Sharing 1 Bulan (4K)',
             'price' => 25000,
-            'total_slots' => 5,
+            'total_slots' => 2,
             'duration_days' => 30, // <--- TAMBAHAN: Wajib ada karena ada di migrasi
             'group_timeout_hours' => 24,
             'is_active' => true,   // <--- TAMBAHAN: Ini yang tadi bikin error

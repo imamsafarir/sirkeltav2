@@ -75,9 +75,24 @@ class OrderResource extends Resource
                     ->weight('bold')
                     ->copyable(),
 
-                Tables\Columns\TextColumn::make('variant.product.name')
-                    ->label('Produk')
-                    ->description(fn(Order $record) => $record->variant->name)
+                // --- PERBAIKAN UTAMA DI SINI ---
+                // Jangan akses relasi langsung, pakai logika cek Tipe Order
+                Tables\Columns\TextColumn::make('product_info')
+                    ->label('Produk / Layanan')
+                    ->state(function (Order $record) {
+                        if ($record->type === 'topup') {
+                            return 'Top Up Saldo';
+                        }
+                        // Gunakan tanda tanya (?) agar aman (Null Safe)
+                        return $record->variant?->product?->name ?? 'Produk Tidak Ditemukan';
+                    })
+                    ->description(function (Order $record) {
+                        if ($record->type === 'topup') {
+                            return 'Deposit Dompet';
+                        }
+                        return $record->variant?->name ?? '-';
+                    })
+                    ->icon(fn(Order $record) => $record->type === 'topup' ? 'heroicon-o-currency-dollar' : 'heroicon-o-shopping-bag')
                     ->searchable(),
 
                 Tables\Columns\TextColumn::make('amount')
@@ -139,13 +154,12 @@ class OrderResource extends Resource
     {
         return $infolist
             ->schema([
-                // 1. DATA AKUN PREMIUM (Hanya muncul jika Completed)
+                // 1. DATA AKUN PREMIUM (Hanya muncul jika Completed DAN Tipe Product)
                 Infolists\Components\Section::make('Akun Premium Anda')
                     ->description('Silakan gunakan data ini untuk login aplikasi.')
                     ->icon('heroicon-m-gift')
-                    ->iconColor('success') // Warna Ikon Hijau
+                    ->iconColor('success')
                     ->headerActions([
-                        // Tombol Copy Kecil di Header Section
                         Infolists\Components\Actions\Action::make('copy_all')
                             ->icon('heroicon-m-clipboard')
                             ->label('Salin Info')
@@ -174,7 +188,8 @@ class OrderResource extends Resource
                             ->markdown(),
                     ])
                     ->columns(2)
-                    ->visible(fn($record) => $record->status === 'completed'),
+                    // PENTING: Hide jika status belum completed ATAU tipe order adalah topup
+                    ->visible(fn($record) => $record->status === 'completed' && $record->type === 'product'),
 
                 // 2. DETAIL TRANSAKSI & GRUP (Selalu Muncul)
                 Infolists\Components\Section::make('Informasi Transaksi')
@@ -187,11 +202,14 @@ class OrderResource extends Resource
                             ->label('Tanggal Order')
                             ->dateTime('d M Y H:i'),
 
-                        Infolists\Components\TextEntry::make('variant.product.name')
-                            ->label('Produk'),
+                        // PERBAIKAN: Gunakan 'state' custom untuk handle Top Up
+                        Infolists\Components\TextEntry::make('product_name')
+                            ->label('Produk')
+                            ->state(fn(Order $record) => $record->type === 'topup' ? 'Top Up Saldo' : $record->variant?->product?->name),
 
-                        Infolists\Components\TextEntry::make('variant.name')
-                            ->label('Paket'),
+                        Infolists\Components\TextEntry::make('variant_name')
+                            ->label('Paket')
+                            ->state(fn(Order $record) => $record->type === 'topup' ? 'Deposit' : $record->variant?->name),
 
                         Infolists\Components\TextEntry::make('amount')
                             ->label('Total Bayar')
@@ -207,9 +225,11 @@ class OrderResource extends Resource
                                 default => 'gray',
                             }),
 
+                        // Hanya muncul jika produk (bukan topup)
                         Infolists\Components\TextEntry::make('group.id')
                             ->label('ID Grup Patungan')
-                            ->icon('heroicon-m-user-group'),
+                            ->icon('heroicon-m-user-group')
+                            ->visible(fn(Order $record) => $record->type === 'product'),
                     ])
                     ->columns(2),
             ]);
@@ -229,7 +249,7 @@ class OrderResource extends Resource
         ];
     }
 
-    // --- BAGIAN INI YANG DIMODIFIKASI ---
+    // --- BAGIAN NAVIGATION BADGE ---
 
     public static function getNavigationBadge(): ?string
     {
@@ -240,7 +260,6 @@ class OrderResource extends Resource
         }
 
         // 2. CUSTOMER: Melihat jumlah order COMPLETED
-        // Gunakan (string) untuk memastikan tipe data sesuai return type
         return (string) Order::query()
             ->where('user_id', Auth::id())
             ->where('status', 'completed')
@@ -249,8 +268,6 @@ class OrderResource extends Resource
 
     public static function getNavigationBadgeColor(): ?string
     {
-        // Admin Warna MERAH (Warning)
-        // Customer Warna HIJAU (Success)
         return Auth::user()->role === 'admin' ? 'danger' : 'success';
     }
 }

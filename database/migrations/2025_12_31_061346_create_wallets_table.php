@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
             $table->decimal('balance', 15, 2)->default(0); // Bisa simpan triliunan
+            $table->string('status')->default('active');
             $table->timestamps();
         });
     }
