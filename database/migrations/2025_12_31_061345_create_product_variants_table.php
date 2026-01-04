@@ -21,6 +21,7 @@ return new class extends Migration
 
             // Saya beri 'default(30)' agar aman jika seeder lupa mengisi kolom ini
             $table->integer('duration_days')->default(30);
+            $table->text('features')->nullable();
 
             $table->integer('group_timeout_hours')->default(24);
 

@@ -15,13 +15,18 @@
 
     <script src="https://cdn.tailwindcss.com"></script>
     @livewireStyles
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 
 <body class="font-sans antialiased text-gray-900 bg-white">
 
     {{-- === 1. NAVBAR PREMIUM (Sticky & Glass Effect) === --}}
-    <nav class="fixed w-full z-50 top-0 start-0 transition-all duration-300 border-b border-white/20 bg-white/80 backdrop-blur-md"
-        id="navbar">
+    {{-- Menggunakan x-data untuk efek scroll --}}
+    <nav x-data="{ scrolled: false }" @scroll.window="scrolled = (window.pageYOffset > 20)"
+        :class="scrolled ? 'bg-white/90 backdrop-blur-md shadow-md border-b border-gray-200' :
+            'bg-transparent border-transparent'"
+        class="fixed w-full z-50 top-0 start-0 transition-all duration-300" id="navbar">
+
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-20 items-center">
 
@@ -47,7 +52,7 @@
                         Kerja</a>
                 </div>
 
-                {{-- Tombol Login/Dashboard --}}
+                {{-- Tombol Login/Dashboard (DESKTOP) --}}
                 <div class="hidden md:flex items-center gap-3">
                     @auth
                         <div class="relative group">
@@ -62,11 +67,13 @@
                             {{-- Dropdown User --}}
                             <div
                                 class="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform origin-top-right">
-                                <a href="{{ route('dashboard') }}"
+                                {{-- Link ke Admin Dashboard --}}
+                                <a href="{{ url('/admin') }}"
                                     class="block px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 rounded-t-xl">
                                     Dashboard
                                 </a>
-                                <form method="POST" action="{{ route('logout') }}">
+                                {{-- Logout Filament --}}
+                                <form method="POST" action="{{ route('filament.admin.auth.logout') }}">
                                     @csrf
                                     <button type="submit"
                                         class="block w-full text-left px-4 py-3 text-sm text-red-600 hover:bg-red-50 rounded-b-xl">
@@ -76,12 +83,19 @@
                             </div>
                         </div>
                     @else
-                        <a href="{{ route('login') }}"
-                            class="text-gray-600 hover:text-indigo-600 font-bold px-4 transition">Masuk</a>
-                        <a href="{{ route('register') }}"
-                            class="bg-indigo-600 text-white px-6 py-2.5 rounded-full font-bold shadow-lg hover:bg-indigo-700 hover:shadow-indigo-500/30 transition transform hover:-translate-y-0.5">
-                            Daftar Sekarang
+                        {{-- Login Filament --}}
+                        <a href="{{ route('filament.admin.auth.login') }}"
+                            class="text-gray-600 hover:text-indigo-600 font-bold px-4 transition">
+                            Masuk
                         </a>
+
+                        {{-- Register Filament (Cek route dulu) --}}
+                        @if (Route::has('filament.admin.auth.register'))
+                            <a href="{{ route('filament.admin.auth.register') }}"
+                                class="bg-indigo-600 text-white px-6 py-2.5 rounded-full font-bold shadow-lg hover:bg-indigo-700 hover:shadow-indigo-500/30 transition transform hover:-translate-y-0.5">
+                                Daftar Sekarang
+                            </a>
+                        @endif
                     @endauth
                 </div>
 
@@ -104,33 +118,44 @@
                 <a href="#katalog" class="block text-gray-600 font-medium hover:text-indigo-600">Produk</a>
                 <a href="#live-groups" class="block text-gray-600 font-medium hover:text-indigo-600">Grup Aktif</a>
                 <a href="#cara-kerja" class="block text-gray-600 font-medium hover:text-indigo-600">Cara Kerja</a>
+
                 <div class="border-t border-gray-100 pt-4 mt-4">
                     @auth
-                        <a href="{{ route('dashboard') }}"
-                            class="block w-full text-center bg-indigo-50 text-indigo-700 py-3 rounded-xl font-bold mb-2">Dashboard
-                            Saya</a>
-                        <form method="POST" action="{{ route('logout') }}">
+                        <a href="{{ url('/admin') }}"
+                            class="block w-full text-center bg-indigo-50 text-indigo-700 py-3 rounded-xl font-bold mb-2">
+                            Dashboard Saya
+                        </a>
+                        {{-- Logout Mobile (Filament Route) --}}
+                        <form method="POST" action="{{ route('filament.admin.auth.logout') }}">
                             @csrf
                             <button class="block w-full text-center text-red-600 font-bold py-2">Keluar</button>
                         </form>
                     @else
-                        <a href="{{ route('login') }}"
-                            class="block w-full text-center text-gray-600 font-bold py-2">Masuk</a>
-                        <a href="{{ route('register') }}"
-                            class="block w-full text-center bg-indigo-600 text-white py-3 rounded-xl font-bold mt-2">Daftar</a>
+                        {{-- Login Mobile (Filament Route) --}}
+                        <a href="{{ route('filament.admin.auth.login') }}"
+                            class="block w-full text-center text-gray-600 font-bold py-2">
+                            Masuk
+                        </a>
+
+                        {{-- Register Mobile (Filament Route) --}}
+                        @if (Route::has('filament.admin.auth.register'))
+                            <a href="{{ route('filament.admin.auth.register') }}"
+                                class="block w-full text-center bg-indigo-600 text-white py-3 rounded-xl font-bold mt-2">
+                                Daftar
+                            </a>
+                        @endif
                     @endauth
                 </div>
             </div>
         </div>
     </nav>
 
-    {{-- === 2. KONTEN HALAMAN (Home, dll) === --}}
-    <main class="pt-20"> {{-- Padding top agar tidak tertutup navbar sticky --}}
+    {{-- === 2. KONTEN HALAMAN === --}}
+    <main class="pt-20">
         @yield('content')
     </main>
 
-    {{-- === 3. FOOTER GLOBAL (Agar muncul di semua halaman) === --}}
-    {{-- 5. FOOTER (Hapus ini jika di layouts/app-web.blade.php sudah ada footer juga) --}}
+    {{-- === 3. FOOTER GLOBAL === --}}
     <footer class="bg-gray-50 border-t border-gray-200 pt-16 pb-8">
         <div class="max-w-7xl mx-auto px-4">
             <div class="grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">

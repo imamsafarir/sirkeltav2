@@ -21,6 +21,9 @@ return new class extends Migration
 
             // Kapan grup ini mati kalau tidak penuh
             $table->timestamp('expired_at')->nullable();
+            $table->string('account_email')->nullable();
+            $table->string('account_password')->nullable();
+            $table->text('additional_info')->nullable();
 
             $table->timestamps();
         });

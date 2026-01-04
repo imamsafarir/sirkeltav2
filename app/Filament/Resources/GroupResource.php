@@ -98,8 +98,15 @@ class GroupResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('variant.product.name')->label('Brand')->sortable()->searchable(),
-                Tables\Columns\TextColumn::make('variant.name')->label('Paket')->searchable(),
+                Tables\Columns\TextColumn::make('variant.product.name')
+                    ->label('Brand')
+                    ->sortable()
+                    ->searchable(),
+
+                Tables\Columns\TextColumn::make('variant.name')
+                    ->label('Paket')
+                    ->searchable(),
+
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
@@ -108,6 +115,7 @@ class GroupResource extends Resource
                         'processing' => 'info',
                         'completed' => 'gray',
                         'expired' => 'danger',
+                        default => 'secondary', // Fallback color
                     }),
 
                 Tables\Columns\TextColumn::make('filled_slots')
@@ -120,7 +128,10 @@ class GroupResource extends Resource
                         return ($maxSlots > 0 && $currentMembers >= $maxSlots) ? "{$currentMembers} / {$maxSlots} (PENUH)" : "{$currentMembers} / {$maxSlots}";
                     }),
 
-                Tables\Columns\TextColumn::make('expired_at')->dateTime()->label('Berakhir Pada')->sortable(),
+                Tables\Columns\TextColumn::make('expired_at')
+                    ->dateTime()
+                    ->label('Berakhir Pada')
+                    ->sortable(),
             ])
             ->defaultSort('created_at', 'desc')
             ->filters([
@@ -135,7 +146,9 @@ class GroupResource extends Resource
 
     public static function getRelations(): array
     {
-        return [OrdersRelationManager::class];
+        return [
+            OrdersRelationManager::class,
+        ];
     }
 
     public static function getPages(): array
@@ -152,18 +165,15 @@ class GroupResource extends Resource
         return Auth::check() && Auth::user()->role === 'admin';
     }
 
-    // --- BAGIAN BADGE NAVIGASI (DITAMBAHKAN KEMBALI) ---
-
+    // --- BAGIAN BADGE NAVIGASI ---
     public static function getNavigationBadge(): ?string
     {
-        // Hitung grup yang statusnya 'full' (perlu tindakan admin)
         $count = static::getModel()::where('status', 'full')->count();
         return $count > 0 ? (string) $count : null;
     }
 
     public static function getNavigationBadgeColor(): ?string
     {
-        // Warna merah (danger) jika ada grup yang penuh
         return 'danger';
     }
 }

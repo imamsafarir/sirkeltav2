@@ -13,9 +13,9 @@ use Illuminate\Support\Facades\Auth;
 class LatestOrders extends BaseWidget
 {
     protected static ?int $sort = 3;
-    protected int | string | array $columnSpan = 'full';
+    protected int | string | array $columnSpan = 'full'; // Agar lebar tabel penuh
 
-    protected static ?string $heading = 'Transaksi Terbaru';
+    protected static ?string $heading = 'Riwayat Transaksi';
 
     // 1. IZINKAN SEMUA USER LOGIN MELIHAT WIDGET INI
     public static function canView(): bool
@@ -27,19 +27,30 @@ class LatestOrders extends BaseWidget
     {
         return $table
             ->query(
-                // 2. LOGIKA FILTER:
-                // Jika Admin -> Ambil semua
-                // Jika User  -> Ambil punya sendiri
                 Order::query()
+                    // Optimasi: Load relasi agar query lebih ringan
+                    ->with(['user', 'variant.product', 'group'])
+                    // 2. LOGIKA FILTER (Admin lihat semua, User lihat punya sendiri)
                     ->when(Auth::user()->role !== 'admin', function ($query) {
                         return $query->where('user_id', Auth::id());
                     })
                     ->latest()
-                    ->limit(5)
+                // HAPUS limit(5) AGAR PAGINATION BERFUNGSI
             )
-            ->paginated(false)
+            // 3. AKTIFKAN PAGINATION (10, 25, 50, 100, All)
+            ->paginated([10, 25, 50, 100, 'all'])
+            ->defaultPaginationPageOption(10)
             ->columns([
-                // 3. NAMA CUSTOMER (Sembunyikan jika yang login adalah Customer)
+                // --- KOLOM INVOICE (TAMBAHAN) ---
+                Tables\Columns\TextColumn::make('invoice_number')
+                    ->label('Invoice')
+                    ->searchable()
+                    ->copyable()
+                    ->fontFamily('mono')
+                    ->size(Tables\Columns\TextColumn\TextColumnSize::ExtraSmall)
+                    ->color('gray'),
+
+                // 4. NAMA CUSTOMER (Hanya tampil untuk Admin)
                 Tables\Columns\TextColumn::make('user.name')
                     ->label('Customer')
                     ->icon('heroicon-m-user')
@@ -47,7 +58,7 @@ class LatestOrders extends BaseWidget
                     ->searchable()
                     ->visible(fn() => Auth::user()->role === 'admin'),
 
-                // 4. PRODUK
+                // 5. PRODUK
                 Tables\Columns\TextColumn::make('product_info')
                     ->label('Produk')
                     ->state(function (Order $record) {
@@ -61,7 +72,15 @@ class LatestOrders extends BaseWidget
                     ->icon(fn(Order $record) => $record->type === 'topup' ? 'heroicon-o-currency-dollar' : 'heroicon-o-shopping-bag')
                     ->wrap(),
 
-                // 5. HARGA
+                // --- METODE PEMBAYARAN (TAMBAHAN) ---
+                Tables\Columns\TextColumn::make('payment_method')
+                    ->label('Metode')
+                    ->badge()
+                    ->color('gray')
+                    ->formatStateUsing(fn($state) => strtoupper($state))
+                    ->toggleable(isToggledHiddenByDefault: true), // Bisa di-show/hide user
+
+                // 6. HARGA
                 Tables\Columns\TextColumn::make('amount')
                     ->label('Total')
                     ->money('IDR')
@@ -69,24 +88,25 @@ class LatestOrders extends BaseWidget
                     ->weight('bold')
                     ->color('success'),
 
-                // 6. STATUS
+                // 7. STATUS
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
                         'pending' => 'warning',
                         'paid', 'processing' => 'info',
                         'completed' => 'success',
-                        'failed', 'canceled' => 'danger',
+                        'failed', 'canceled', 'expired' => 'danger',
                         default => 'gray',
                     })
                     ->formatStateUsing(fn(string $state): string => ucfirst($state)),
 
-                // 7. WAKTU (VERSI BERSIH - TANPA TOOLTIP)
+                // 8. WAKTU
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Waktu')
-                    ->since()
+                    ->dateTime('d M Y, H:i') // Format lebih jelas daripada since() untuk laporan
                     ->sortable()
-                    ->color('gray'),
+                    ->color('gray')
+                    ->toggleable(),
             ])
             ->actions([
                 // Tombol Edit (Hanya Admin)
@@ -108,12 +128,12 @@ class LatestOrders extends BaseWidget
             ]);
     }
 
-    // Fungsi Layout Infolist (Sinkron dengan OrderResource)
+    // Fungsi Layout Infolist (Detail Modal)
     public static function infolist(Infolist $infolist): Infolist
     {
         return $infolist
             ->schema([
-                // 1. DATA AKUN PREMIUM (Lengkap dengan Catatan Khusus)
+                // 1. DATA AKUN PREMIUM (Hanya muncul jika Completed & Produk)
                 Infolists\Components\Section::make('Akun Premium')
                     ->description('Data akun untuk customer.')
                     ->icon('heroicon-m-gift')
@@ -136,7 +156,7 @@ class LatestOrders extends BaseWidget
                             ->color('primary')
                             ->default('Menunggu Admin...'),
 
-                        // FITUR CATATAN SPESIFIK USER
+                        // FITUR CATATAN SPESIFIK USER (LOGIKA ANDA SEBELUMNYA)
                         Infolists\Components\TextEntry::make('custom_note')
                             ->label('Catatan Khusus Untuk Anda')
                             ->icon('heroicon-m-sparkles')
@@ -152,9 +172,9 @@ class LatestOrders extends BaseWidget
                                         }
                                     }
                                 }
-                                return 'Tidak ada catatan khusus.';
+                                return null;
                             })
-                            ->visible(fn($state) => $state !== 'Tidak ada catatan khusus.'),
+                            ->visible(fn($state) => !empty($state)),
                     ])
                     ->columns(2)
                     ->visible(fn($record) => $record->status === 'completed' && $record->type === 'product'),
@@ -178,10 +198,16 @@ class LatestOrders extends BaseWidget
                             ->label('Paket')
                             ->state(fn(Order $record) => $record->type === 'topup' ? 'Deposit' : $record->variant?->name),
 
+                        Infolists\Components\TextEntry::make('payment_method')
+                            ->label('Metode Pembayaran')
+                            ->badge()
+                            ->color('gray'),
+
                         Infolists\Components\TextEntry::make('amount')
                             ->label('Total Bayar')
                             ->money('IDR')
-                            ->weight('bold'),
+                            ->weight('bold')
+                            ->size(Infolists\Components\TextEntry\TextEntrySize::Large),
 
                         Infolists\Components\TextEntry::make('status')
                             ->badge()

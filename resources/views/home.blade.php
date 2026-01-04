@@ -1,7 +1,7 @@
 @extends('layouts.app-web')
 
 @section('content')
-    {{-- 1. HERO SECTION (Langsung Konten Utama) --}}
+    {{-- 1. HERO SECTION --}}
     <div class="relative bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white overflow-hidden">
         {{-- Hiasan Background --}}
         <div class="absolute top-0 left-0 w-full h-full opacity-10">
@@ -39,92 +39,185 @@
         </div>
     </div>
 
-    {{-- 2. LIVE GROUP MONITOR (Grup dengan User Disamarkan) --}}
-    @if (isset($activeGroups) && $activeGroups->count() > 0)
-        <div id="live-groups" class="py-16 bg-gray-50 border-b border-gray-200">
+    {{-- 2. LIVE GROUP MONITOR --}}
+    @if (isset($productsWithGroups) && $productsWithGroups->count() > 0)
+        <div id="live-groups" class="py-16 bg-gray-50 border-b border-gray-200" x-data="{ activeTab: {{ $productsWithGroups->first()->id }} }">
             <div class="max-w-7xl mx-auto px-4">
-                <div class="flex items-center justify-between mb-8">
-                    <div>
-                        <h2 class="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                            <span class="relative flex h-3 w-3">
-                                <span
-                                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                            </span>
-                            Grup Sedang Mencari Anggota
-                        </h2>
-                        <p class="text-gray-500 text-sm">Real-time update peserta patungan.</p>
-                    </div>
+
+                <div class="text-center mb-10">
+                    <h2 class="text-2xl md:text-3xl font-bold text-gray-900 mb-2">Monitor Grup Real-time</h2>
+                    <p class="text-gray-500">Pilih layanan di bawah untuk melihat ketersediaan slot.</p>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    @foreach ($activeGroups as $group)
-                        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition">
-                            {{-- Header Kartu --}}
-                            <div class="flex justify-between items-start mb-4">
-                                <div>
-                                    <div class="text-xs font-bold text-indigo-600 uppercase tracking-wide">
-                                        #GRUP-{{ $group->id }}</div>
-                                    <h3 class="font-bold text-gray-800 text-lg">
-                                        {{ $group->variant->product->name ?? 'Produk' }}</h3>
-                                    <span class="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                                        {{ $group->variant->name ?? 'Paket' }}
+                {{-- A. NAVIGASI PRODUK (TAB) --}}
+                <div class="flex flex-nowrap overflow-x-auto gap-4 pb-6 mb-6 justify-start md:justify-center no-scrollbar"
+                    style="scrollbar-width: none; -ms-overflow-style: none;">
+                    @foreach ($productsWithGroups as $product)
+                        <button @click="activeTab = {{ $product->id }}"
+                            class="group flex flex-col items-center gap-3 min-w-[100px] transition-all duration-300 focus:outline-none">
+
+                            {{-- Icon Wrapper --}}
+                            <div class="w-16 h-16 rounded-2xl flex items-center justify-center p-3 transition-all duration-300 shadow-sm border-2"
+                                :class="activeTab === {{ $product->id }} ?
+                                    'bg-white border-indigo-600 ring-2 ring-indigo-100 scale-110 shadow-lg' :
+                                    'bg-white border-gray-200 group-hover:border-indigo-300 group-hover:scale-105'">
+
+                                @if ($product->image)
+                                    <img src="{{ Storage::url($product->image) }}" alt="{{ $product->name }}"
+                                        class="w-full h-full object-contain">
+                                @else
+                                    <span class="text-xl font-bold transition-colors duration-300"
+                                        :class="activeTab === {{ $product->id }} ? 'text-indigo-600' : 'text-gray-400'">
+                                        {{ substr($product->name, 0, 1) }}
                                     </span>
-                                </div>
-                                <div class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-lg">
-                                    OPEN
-                                </div>
+                                @endif
                             </div>
 
-                            {{-- Slot Peserta --}}
-                            <div class="space-y-3">
-                                <p class="text-xs text-gray-400 font-semibold uppercase">Peserta Terdaftar:</p>
-                                <div class="flex flex-col gap-2">
-                                    {{-- Loop Peserta yang SUDAH Masuk --}}
-                                    @foreach ($group->orders as $order)
-                                        <div class="flex items-center gap-3">
-                                            <div
-                                                class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-xs">
-                                                {{ substr($order->user->name ?? 'U', 0, 1) }}
-                                            </div>
-                                            <div class="flex-1">
-                                                {{-- MASKING NAMA (Privasi) --}}
-                                                <p class="text-sm font-medium text-gray-700">
-                                                    {{ substr($order->user->name ?? 'User', 0, 3) }}***
-                                                </p>
-                                            </div>
-                                            <span class="text-xs text-green-600 font-bold">Join ✅</span>
-                                        </div>
-                                    @endforeach
+                            {{-- Nama Produk --}}
+                            <span class="text-xs font-bold transition-colors duration-300"
+                                :class="activeTab === {{ $product->id }} ? 'text-indigo-600' : 'text-gray-500'">
+                                {{ $product->name }}
+                            </span>
+                        </button>
+                    @endforeach
+                </div>
 
-                                    {{-- Loop Slot Kosong --}}
-                                    @php
-                                        $maxSlots = $group->variant->total_slots ?? 5;
-                                        $filled = $group->orders->count();
-                                        $empty = max(0, $maxSlots - $filled);
-                                    @endphp
+                {{-- B. KONTEN GRUP --}}
+                <div class="min-h-[300px]">
+                    @foreach ($productsWithGroups as $product)
+                        <div x-show="activeTab === {{ $product->id }}"
+                            x-transition:enter="transition ease-out duration-300"
+                            x-transition:enter-start="opacity-0 translate-y-2"
+                            x-transition:enter-end="opacity-100 translate-y-0" style="display: none;">
 
-                                    @for ($i = 0; $i < $empty; $i++)
-                                        <div class="flex items-center gap-3 opacity-50 border-t border-dashed pt-2">
-                                            <div
-                                                class="w-8 h-8 rounded-full border-2 border-dashed border-gray-300 flex items-center justify-center text-gray-300 text-xs">
-                                                +
-                                            </div>
-                                            <div class="flex-1">
-                                                <p class="text-sm font-medium text-gray-400 italic">Menunggu kamu...</p>
-                                            </div>
-                                        </div>
-                                    @endfor
-                                </div>
-                            </div>
-
-                            {{-- Tombol Join --}}
-                            <div class="mt-6">
-                                <a href="{{ route('product.show', $group->variant->product->id ?? 1) }}"
-                                    class="block w-full text-center bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 font-bold py-2 rounded-lg transition text-sm">
-                                    Gabung Grup Ini
+                            <div class="flex justify-between items-center mb-6 px-1">
+                                <h3 class="font-bold text-gray-800 text-lg">Grup {{ $product->name }}</h3>
+                                <a href="{{ route('product.show', $product->id) }}"
+                                    class="text-sm font-bold text-indigo-600 hover:underline flex items-center gap-1">
+                                    Buat Grup Baru <span class="text-lg">&rarr;</span>
                                 </a>
                             </div>
+
+                            @php
+                                $allGroups = $product->variants->flatMap->groups
+                                    ->sortBy(function ($group) {
+                                        return $group->status === 'open' ? 0 : 1;
+                                    })
+                                    ->take(6);
+                            @endphp
+
+                            @if ($allGroups->count() > 0)
+                                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                                    @foreach ($allGroups as $group)
+                                        @php
+                                            $maxSlots = $group->variant->total_slots ?? 5;
+                                            $filled = $group->orders->count();
+                                            $empty = max(0, $maxSlots - $filled);
+                                            $percentage = $maxSlots > 0 ? ($filled / $maxSlots) * 100 : 0;
+                                            $isFull = $filled >= $maxSlots || $group->status !== 'open';
+                                        @endphp
+
+                                        {{-- CARD GRUP --}}
+                                        <div
+                                            class="relative rounded-xl border p-4 transition duration-300 flex flex-col justify-between
+                                            {{ $isFull ? 'bg-gray-50 border-gray-200 opacity-90' : 'bg-white border-indigo-100 shadow-sm hover:shadow-md hover:border-indigo-300' }}">
+
+                                            <div>
+                                                {{-- Label Status --}}
+                                                <div class="absolute top-3 right-3 z-10">
+                                                    @if ($isFull)
+                                                        <span
+                                                            class="bg-gray-200 text-gray-600 text-[10px] font-bold px-2 py-1 rounded-full border border-gray-300">
+                                                            FULL
+                                                        </span>
+                                                    @else
+                                                        <span
+                                                            class="bg-green-100 text-green-600 text-[10px] font-bold px-2 py-1 rounded-full border border-green-200 animate-pulse">
+                                                            TERSEDIA
+                                                        </span>
+                                                    @endif
+                                                </div>
+
+                                                {{-- Info Produk --}}
+                                                <div class="mb-3 pr-24">
+                                                    <h4 class="font-bold text-gray-800 text-sm truncate"
+                                                        title="{{ $group->variant->name }}">
+                                                        {{ $group->variant->name }}
+                                                    </h4>
+                                                    <p class="text-[10px] text-gray-400 font-mono">ID: #{{ $group->id }}
+                                                    </p>
+                                                </div>
+
+                                                {{-- Progress Bar --}}
+                                                <div class="mb-4">
+                                                    <div class="flex justify-between text-[10px] font-semibold mb-1">
+                                                        <span class="{{ $isFull ? 'text-gray-500' : 'text-indigo-600' }}">
+                                                            {{ $isFull ? 'Slot Penuh' : 'Sisa ' . $empty . ' Slot' }}
+                                                        </span>
+                                                        <span
+                                                            class="text-gray-400">{{ $filled }}/{{ $maxSlots }}</span>
+                                                    </div>
+                                                    <div class="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                                                        <div class="h-1.5 rounded-full {{ $isFull ? 'bg-gray-400' : 'bg-indigo-500' }}"
+                                                            style="width: {{ $isFull ? 100 : $percentage }}%"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {{-- Footer: Avatar & Tombol --}}
+                                            <div class="flex items-center justify-between gap-3 mt-2">
+                                                {{-- Avatar Stack --}}
+                                                <div class="flex -space-x-2 overflow-hidden py-1">
+                                                    @foreach ($group->orders->take(4) as $order)
+                                                        {{-- PERBAIKAN: Title di-masking (substr 0,3 + ***) --}}
+                                                        <div class="w-7 h-7 rounded-full ring-2 ring-white flex items-center justify-center text-[9px] font-bold text-white shrink-0 cursor-help
+                                                            {{ $isFull ? 'bg-gray-400' : 'bg-indigo-500' }}"
+                                                            title="{{ substr($order->user->name, 0, 3) }}***">
+                                                            {{ substr($order->user->name, 0, 1) }}
+                                                        </div>
+                                                    @endforeach
+
+                                                    @if (!$isFull)
+                                                        @for ($i = 0; $i < min(3, $empty); $i++)
+                                                            <div
+                                                                class="w-7 h-7 rounded-full ring-2 ring-white bg-white border border-dashed border-gray-300 flex items-center justify-center shrink-0 text-gray-300">
+                                                                <svg class="w-3 h-3" fill="none" stroke="currentColor"
+                                                                    viewBox="0 0 24 24">
+                                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                                        stroke-width="2" d="M12 4v16m8-8H4" />
+                                                                </svg>
+                                                            </div>
+                                                        @endfor
+                                                    @endif
+                                                </div>
+
+                                                {{-- Action Button --}}
+                                                <div class="shrink-0">
+                                                    @if ($isFull)
+                                                        <button disabled
+                                                            class="text-xs font-bold text-gray-400 bg-gray-100 px-4 py-2 rounded-lg cursor-not-allowed">
+                                                            Full
+                                                        </button>
+                                                    @else
+                                                        <a href="{{ route('product.show', $product->id) }}"
+                                                            class="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg transition shadow-sm hover:shadow-md flex items-center gap-1">
+                                                            Join
+                                                        </a>
+                                                    @endif
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    @endforeach
+                                </div>
+                            @else
+                                <div class="text-center py-12 bg-white rounded-xl border border-dashed border-gray-300">
+                                    <p class="text-gray-500 text-sm">Belum ada grup aktif untuk layanan ini.</p>
+                                    <a href="{{ route('product.show', $product->id) }}"
+                                        class="text-indigo-600 font-bold text-sm hover:underline mt-2 inline-block">Jadilah
+                                        yang pertama membuat!</a>
+                                </div>
+                            @endif
                         </div>
                     @endforeach
                 </div>
@@ -179,10 +272,7 @@
 
                         <div class="border-t border-gray-100 pt-4 flex items-center justify-between">
                             <span class="text-xs text-gray-400 font-medium">Mulai dari</span>
-                            {{-- Ambil harga terendah variant jika ada --}}
-                            @php
-                                $minPrice = $product->variants->min('price');
-                            @endphp
+                            @php $minPrice = $product->variants->min('price'); @endphp
                             <span class="text-lg font-bold text-indigo-600">
                                 Rp {{ number_format($minPrice ?? 0, 0, ',', '.') }}
                             </span>
@@ -196,8 +286,7 @@
     {{-- 4. CARA KERJA --}}
     <div id="cara-kerja" class="bg-gray-900 text-white py-24 relative overflow-hidden">
         {{-- Ornament --}}
-        <div class="absolute top-0 right-0 w-64 h-64 bg-indigo-600 rounded-full blur-3xl opacity-20 translate-x-1/2">
-        </div>
+        <div class="absolute top-0 right-0 w-64 h-64 bg-indigo-600 rounded-full blur-3xl opacity-20 translate-x-1/2"></div>
 
         <div class="max-w-7xl mx-auto px-4 relative z-10">
             <div class="text-center mb-16">
@@ -206,43 +295,31 @@
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-12 text-center">
-                {{-- Langkah 1 --}}
                 <div class="relative group">
                     <div
                         class="w-20 h-20 mx-auto bg-indigo-600 rounded-2xl flex items-center justify-center text-3xl font-bold mb-6 shadow-[0_0_20px_rgba(79,70,229,0.5)] group-hover:scale-110 transition duration-300">
-                        1
-                    </div>
+                        1</div>
                     <h3 class="text-xl font-bold mb-3">Pilih & Bayar</h3>
-                    <p class="text-gray-400 leading-relaxed">
-                        Pilih paket layanan yang kamu mau. Bayar instan via QRIS, E-Wallet, atau Transfer Bank (Otomatis).
-                    </p>
+                    <p class="text-gray-400 leading-relaxed">Pilih paket layanan yang kamu mau. Bayar instan via QRIS,
+                        E-Wallet, atau Transfer Bank (Otomatis).</p>
                 </div>
-
-                {{-- Langkah 2 --}}
                 <div class="relative group">
                     <div
                         class="w-20 h-20 mx-auto bg-purple-600 rounded-2xl flex items-center justify-center text-3xl font-bold mb-6 shadow-[0_0_20px_rgba(147,51,234,0.5)] group-hover:scale-110 transition duration-300">
-                        2
-                    </div>
+                        2</div>
                     <h3 class="text-xl font-bold mb-3">Sistem Mencari Grup</h3>
-                    <p class="text-gray-400 leading-relaxed">
-                        Kamu akan otomatis dimasukkan ke dalam grup patungan. Jika grup penuh, akun langsung dikirim.
-                    </p>
+                    <p class="text-gray-400 leading-relaxed">Kamu akan otomatis dimasukkan ke dalam grup patungan. Jika
+                        grup penuh, akun langsung dikirim.</p>
                 </div>
-
-                {{-- Langkah 3 --}}
                 <div class="relative group">
                     <div
                         class="w-20 h-20 mx-auto bg-green-500 rounded-2xl flex items-center justify-center text-3xl font-bold mb-6 shadow-[0_0_20px_rgba(34,197,94,0.5)] group-hover:scale-110 transition duration-300">
-                        3
-                    </div>
+                        3</div>
                     <h3 class="text-xl font-bold mb-3">Login & Enjoy</h3>
-                    <p class="text-gray-400 leading-relaxed">
-                        Cek Dashboard. Email & Password akun premium muncul di sana. Tinggal login dan nonton!
-                    </p>
+                    <p class="text-gray-400 leading-relaxed">Cek Dashboard. Email & Password akun premium muncul di sana.
+                        Tinggal login dan nonton!</p>
                 </div>
             </div>
         </div>
     </div>
-
 @endsection

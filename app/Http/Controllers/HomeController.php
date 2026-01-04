@@ -9,18 +9,27 @@ class HomeController extends Controller
 {
     public function index()
     {
-        // 1. Ambil Produk
+        // 1. Ambil Produk untuk Katalog
         $products = \App\Models\Product::where('is_active', true)->get();
 
-        // 2. Ambil Grup yang sedang OPEN (untuk ditampilkan di Live Monitor)
-        $activeGroups = \App\Models\Group::with(['variant.product', 'orders.user'])
-            ->where('status', 'open')
-            ->where('expired_at', '>', now())
-            ->orderBy('created_at', 'desc')
-            ->take(6) // Tampilkan 6 grup terbaru saja biar rapi
+        // 2. Ambil Produk BESERTA Grup-nya (Open & Full)
+        $productsWithGroups = \App\Models\Product::where('is_active', true)
+            ->whereHas('variants.groups')
+            ->with(['variants.groups' => function ($query) {
+                $query->whereIn('status', ['open', 'full', 'completed'])
+                    // PERBAIKAN: Gunakan 'CASE WHEN' agar kompatibel dengan PostgreSQL
+                    ->orderByRaw("CASE status
+                          WHEN 'open' THEN 1
+                          WHEN 'full' THEN 2
+                          WHEN 'completed' THEN 3
+                          ELSE 4
+                      END")
+                    ->latest()
+                    ->take(6);
+            }, 'variants.groups.orders.user'])
             ->get();
 
-        return view('home', compact('products', 'activeGroups'));
+        return view('home', compact('products', 'productsWithGroups'));
     }
 
     public function show(Product $product)

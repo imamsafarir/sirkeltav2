@@ -2,7 +2,6 @@
 
 @section('content')
     {{-- 1. HERO SECTION & PRODUCT INFO --}}
-    {{-- KEMBALI KE bg-gradient (Agar kompatibel dengan Tailwind v3) --}}
     <div class="relative bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white overflow-hidden">
         {{-- Background Ornament --}}
         <div
@@ -29,7 +28,7 @@
                             <img src="{{ Storage::url($product->image) }}"
                                 class="w-full h-full object-contain drop-shadow-lg transform hover:scale-105 transition duration-500">
                         @else
-                            {{-- Placeholder Image (Juga dikembalikan ke bg-gradient) --}}
+                            {{-- Placeholder Image --}}
                             <div
                                 class="w-full h-full flex items-center justify-center text-6xl font-bold text-white bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl shadow-inner">
                                 {{ substr($product->name, 0, 1) }}
@@ -137,40 +136,56 @@
 
                         <hr class="border-gray-100 mb-6">
 
-                        <ul class="space-y-4 mb-8">
-                            <li class="flex items-start">
-                                <svg class="w-5 h-5 text-green-500 mr-3 shrink-0" fill="none" stroke="currentColor"
-                                    viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M5 13l4 4L19 7"></path>
-                                </svg>
-                                <span class="text-gray-600 text-sm">Akun Resmi (Bukan Curian)</span>
-                            </li>
-                            <li class="flex items-start">
-                                <svg class="w-5 h-5 text-green-500 mr-3 shrink-0" fill="none" stroke="currentColor"
-                                    viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M5 13l4 4L19 7"></path>
-                                </svg>
-                                <span class="text-gray-600 text-sm">Garansi Full {{ $variant->duration_days }} Hari</span>
-                            </li>
-                            <li class="flex items-start">
-                                <svg class="w-5 h-5 text-green-500 mr-3 shrink-0" fill="none" stroke="currentColor"
-                                    viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M5 13l4 4L19 7"></path>
-                                </svg>
-                                <span class="text-gray-600 text-sm">Sistem Patungan Otomatis</span>
-                            </li>
-                            <li class="flex items-start">
-                                <svg class="w-5 h-5 text-green-500 mr-3 shrink-0" fill="none" stroke="currentColor"
-                                    viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M5 13l4 4L19 7"></path>
-                                </svg>
-                                <span class="text-gray-600 text-sm">1 Device / User</span>
-                            </li>
-                        </ul>
+                        {{-- === BAGIAN DINAMIS: FITUR PAKET === --}}
+                        @if ($variant->features)
+                            {{-- Jika Admin sudah mengisi fitur via RichEditor --}}
+                            <div class="mb-8 text-sm text-gray-600 space-y-2">
+                                {{-- Style khusus agar list HTML dari database tampil rapi --}}
+                                <div
+                                    class="[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-2 [&_p]:mb-2">
+                                    {!! $variant->features !!}
+                                </div>
+                            </div>
+                        @else
+                            {{-- FALLBACK: Jika kosong, tampilkan default Hardcoded --}}
+                            <ul class="space-y-4 mb-8">
+                                <li class="flex items-start">
+                                    <svg class="w-5 h-5 text-green-500 mr-3 shrink-0" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    <span class="text-gray-600 text-sm">Akun Resmi (Bukan Curian)</span>
+                                </li>
+                                <li class="flex items-start">
+                                    <svg class="w-5 h-5 text-green-500 mr-3 shrink-0" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    <span class="text-gray-600 text-sm">Garansi Full {{ $variant->duration_days }}
+                                        Hari</span>
+                                </li>
+                                <li class="flex items-start">
+                                    <svg class="w-5 h-5 text-green-500 mr-3 shrink-0" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    <span class="text-gray-600 text-sm">Sistem Patungan Otomatis</span>
+                                </li>
+                                <li class="flex items-start">
+                                    <svg class="w-5 h-5 text-green-500 mr-3 shrink-0" fill="none"
+                                        stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    <span class="text-gray-600 text-sm">1 Device / User</span>
+                                </li>
+                            </ul>
+                        @endif
+                        {{-- === END BAGIAN FITUR === --}}
+
                     </div>
 
                     <div class="p-6 bg-gray-50 mt-auto border-t border-gray-100">

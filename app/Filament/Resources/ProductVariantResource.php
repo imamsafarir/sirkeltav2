@@ -85,6 +85,18 @@ class ProductVariantResource extends Resource
                                     ->action(fn(Set $set) => $set('duration_days', 365)),
                             ]),
 
+                        Forms\Components\RichEditor::make('features')
+                            ->label('Keunggulan / Fitur Paket')
+                            ->toolbarButtons([
+                                'bold',
+                                'bulletList', // Untuk list titik
+                                'orderedList', // Untuk list angka
+                                'undo',
+                                'redo',
+                            ])
+                            ->placeholder("Contoh:\n- Akun Resmi (Bukan Curian)\n- Garansi Full 30 Hari\n- Sistem Patungan Otomatis\n- 1 Device / User")
+                            ->columnSpanFull(), // Agar lebar memenuhi layar
+
                         // Toggle Aktif/Nonaktif
                         Forms\Components\Toggle::make('is_active')
                             ->label('Status Aktif')

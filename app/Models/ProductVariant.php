@@ -15,7 +15,8 @@ class ProductVariant extends Model
         'total_slots',
         'duration_days', // <--- Pastikan ada
         'group_timeout_hours',
-        'is_active',     // <--- Pastikan ada
+        'is_active',
+        'features',     // <--- Pastikan ada
     ];
 
     public function product()

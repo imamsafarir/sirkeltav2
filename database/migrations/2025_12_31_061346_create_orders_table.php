@@ -13,23 +13,18 @@ return new class extends Migration
     {
         Schema::create('orders', function (Blueprint $table) {
             $table->id();
+            $table->string('type')->default('product'); // 'product' atau 'topup'
             $table->foreignId('user_id')->constrained('users');
-            $table->foreignId('group_id')->constrained('groups');
-
-            // INI YANG TADI HILANG DAN BIKIN ERROR:
-            $table->foreignId('product_variant_id')->constrained('product_variants');
-
+            $table->foreignId('group_id')->nullable()->constrained('groups');
+            $table->foreignId('product_variant_id')->nullable()->constrained('product_variants');
             $table->string('invoice_number')->unique(); // INV-2024...
             $table->integer('amount'); // Nominal bayar
-            $table->string('status')->default('pending'); // pending, paid, completed, refunded
-
-            // Data Xendit
-            $table->string('payment_url')->nullable();
-            $table->string('xendit_external_id')->nullable();
-
+            $table->string('status')->default('pending');
+            $table->string('description')->nullable(); // pending, paid, completed, refunded
+            $table->string('snap_token')->nullable(); // Token untuk popup Snap
+            $table->string('payment_method')->nullable(); // bank_transfer, gopay, dll
             // Data Akun Sharing (Email/Pass) yang diisi admin nanti
             $table->text('account_data')->nullable();
-
             $table->timestamps();
         });
     }
