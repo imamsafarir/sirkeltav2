@@ -117,52 +117,6 @@ class DatabaseSeeder extends Seeder
 
         $this->command->info('✅ Products & Variants created.');
 
-        // 4. SIMULASI GRUP & ORDER
-
-        // --- SKENARIO 1: GRUP NETFLIX YANG SUDAH PENUH (FULL) ---
-        // Grup ini isinya 5 orang, statusnya FULL, menunggu Admin memproses.
-        $groupFull = Group::create([
-            'product_variant_id' => $netflixSharing->id,
-            'status' => 'full',
-            'expired_at' => Carbon::now()->addHours(24),
-        ]);
-
-        // Masukkan 5 Customer pertama ke grup ini
-        for ($i = 0; $i < 5; $i++) {
-            Order::create([
-                'type' => 'product',
-                'user_id' => $customers[$i]->id,
-                'group_id' => $groupFull->id,
-                'product_variant_id' => $netflixSharing->id,
-                'invoice_number' => 'INV-' . strtoupper(uniqid()),
-                'amount' => $netflixSharing->price,
-                'status' => 'paid', // Sudah bayar
-                'description' => 'Pembelian Netflix Sharing',
-            ]);
-        }
-
-        // --- SKENARIO 2: GRUP SPOTIFY YANG MASIH OPEN (Baru 2 orang) ---
-        $groupOpen = Group::create([
-            'product_variant_id' => $spotifyFam->id,
-            'status' => 'open',
-            'expired_at' => Carbon::now()->addHours(24),
-        ]);
-
-        // Masukkan 2 Customer berikutnya ke grup ini
-        for ($i = 5; $i < 7; $i++) {
-            Order::create([
-                'type' => 'product',
-                'user_id' => $customers[$i]->id,
-                'group_id' => $groupOpen->id,
-                'product_variant_id' => $spotifyFam->id,
-                'invoice_number' => 'INV-' . strtoupper(uniqid()),
-                'amount' => $spotifyFam->price,
-                'status' => 'paid',
-                'description' => 'Pembelian Spotify Family',
-            ]);
-        }
-
-        $this->command->info('✅ Dummy Groups & Orders created.');
         $this->command->info('---------------------------------------');
         $this->command->info('Login Admin: admin@sirkelta.com | password');
         $this->command->info('Login User: user1@sirkelta.com | password');

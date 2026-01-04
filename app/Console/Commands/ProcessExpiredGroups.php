@@ -4,7 +4,9 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use App\Models\Group;
+use App\Models\Wallet;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ProcessExpiredGroups extends Command
 {
@@ -20,13 +22,15 @@ class ProcessExpiredGroups extends Command
 
     public function handle()
     {
-        // 1. Cari Grup yang Expired TAPI statusnya belum 'expired' atau 'closed'
-        // Kita cari yang 'open', 'full', 'processing', atau 'completed' yang waktunya sudah lewat
+        // 1. Cari Grup yang Waktunya Sudah Lewat (expired_at < now)
+        // Dan statusnya belum 'expired' atau 'closed'
         $expiredGroups = Group::whereNotIn('status', ['expired', 'closed'])
             ->where('expired_at', '<', now())
+            ->with('orders') // Load orders biar query efisien
             ->get();
 
         $count = $expiredGroups->count();
+
         if ($count === 0) {
             $this->info('Tidak ada grup expired saat ini.');
             return;
@@ -37,55 +41,63 @@ class ProcessExpiredGroups extends Command
         foreach ($expiredGroups as $group) {
             DB::transaction(function () use ($group) {
 
-                // SKENARIO A: Grup Gagal (Masih Open/Full tapi waktu habis)
-                // Tindakan: Kembalikan Uang (Refund)
+                // --- SKENARIO A: GRUP GAGAL (Masih Open/Full tapi waktu habis) ---
+                // Artinya: Belum sempat diproses admin, tapi waktu tunggu habis.
+                // Tindakan: REFUND UANG USER.
                 if (in_array($group->status, ['open', 'full'])) {
 
-                    $paidOrders = $group->orders()->whereIn('status', ['paid', 'processing'])->get();
+                    $this->warn("Grup #{$group->id} Gagal (Open -> Expired). Melakukan refund...");
 
-                    foreach ($paidOrders as $order) {
-                        // Refund Saldo ke Dompet User (Pastikan user punya method deposit/wallet)
-                        if ($order->user) {
-                            // Cek apakah user pakai package laravel-wallet atau logic manual
-                            // Sesuaikan baris ini dengan logic dompet Anda
-                            if (method_exists($order->user, 'deposit')) {
-                                $order->user->deposit($order->amount, [
-                                    'description' => "Refund Otomatis: Grup #{$group->id} Gagal (Expired)"
-                                ]);
-                            } elseif (method_exists($order->user, 'wallet')) {
-                                $order->user->wallet->increment('balance', $order->amount);
-                            }
+                    foreach ($group->orders as $order) {
+                        // Hanya refund yang statusnya 'paid' atau 'processing'
+                        if (in_array($order->status, ['paid', 'processing'])) {
+
+                            // 1. Cari atau Buat Wallet User
+                            $wallet = Wallet::firstOrCreate(['user_id' => $order->user_id]);
+
+                            // 2. Kembalikan Saldo
+                            $wallet->increment('balance', $order->amount);
+
+                            // 3. Update Status Order jadi Refunded
+                            $order->update(['status' => 'refunded']);
+
+                            $this->info(" -> Refund Rp " . number_format($order->amount) . " ke user ID: {$order->user_id}");
+
+                            // Log System
+                            Log::info("AUTO-REFUND: Order #{$order->invoice_number} (Grup #{$group->id} Expired)");
+                        } else {
+                            // Kalau belum bayar (pending), langsung cancel saja
+                            $order->update(['status' => 'canceled']);
                         }
-
-                        // Tandai order sebagai refunded
-                        $order->update(['status' => 'refunded']); // Pastikan 'refunded' ada di enum/pilihan status order
-                        $this->info(" -> Refund user {$order->user->name} (Order #{$order->invoice_number})");
                     }
-
-                    $this->warn("Grup #{$group->id} Gagal (Open -> Expired). ID siap direcycle.");
                 }
 
-                // SKENARIO B: Grup Selesai (Completed tapi masa aktif habis)
-                // Tindakan: Hapus Kredensial (Email/Pass) demi keamanan & Privasi
+                // --- SKENARIO B: GRUP SELESAI LANGGANAN (Status Completed) ---
+                // Artinya: User sudah menikmati layanan sampai habis.
+                // Tindakan: Tidak perlu refund, cukup tandai selesai.
                 elseif ($group->status === 'completed') {
-                    $this->info("Grup #{$group->id} Selesai Langganan (Completed -> Expired). ID siap direcycle.");
+                    $this->info("Grup #{$group->id} Selesai Langganan. Membersihkan data...");
 
-                    // Kita tidak perlu refund karena mereka sudah menikmati layanannya
-                    // Tapi kita tandai order mereka selesai/expired juga
-                    $group->orders()->update(['status' => 'completed']);
+                    // Tandai semua order di dalamnya sebagai 'completed' (selesai langganan)
+                    // Atau bisa dibiarkan 'completed' saja.
                 }
 
-                // AKHIR PROSES:
-                // Ubah status jadi 'expired' & Hapus Data Login agar bersih saat di-recycle nanti
+                // --- LANGKAH TERAKHIR (UNTUK SEMUA SKENARIO) ---
+                // Ubah status grup jadi 'expired' dan hapus data login
+                // Ini penting agar ID grup bisa di-recycle (dipakai ulang) nanti jika pakai sistem recycle ID
                 $group->update([
                     'status' => 'expired',
-                    'account_email' => null,     // Hapus data sensitif
-                    'account_password' => null,  // Hapus data sensitif
-                    'additional_info' => null,   // Hapus catatan profil
+                    'account_email' => null,     // Hapus email akun (keamanan)
+                    'account_password' => null,  // Hapus password akun (keamanan)
+                    'additional_info' => null,   // Hapus catatan
                 ]);
+
+                // Lepaskan (Dissociate) semua member dari grup ini
+                // Agar slot grup menjadi kosong dan bisa diisi orang baru (jika sistem recycle ID aktif)
+                // $group->orders()->update(['group_id' => null]); // OPSI: Uncomment baris ini jika ingin grup benar-benar kosong
             });
         }
 
-        $this->info('Semua grup expired berhasilipproses!');
+        $this->info('Semua grup expired berhasil diproses!');
     }
 }
