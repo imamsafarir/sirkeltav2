@@ -21,21 +21,13 @@ class EditGroup extends EditRecord
         ];
     }
 
-    /**
-     * 1. TETAP DI HALAMAN EDIT
-     * Setelah menekan tombol simpan, Admin tidak akan dilempar kembali ke tabel,
-     * sehingga bisa memeriksa apakah durasi sudah bertambah atau belum.
-     */
+    // 1. TETAP DI HALAMAN EDIT
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('edit', ['record' => $this->getRecord()]);
     }
 
-    /**
-     * 2. MODIFIKASI TOMBOL SAVE (Dinamis & Realtime)
-     * Menggunakan getRawState() agar label, warna, dan ikon tombol
-     * berubah langsung saat Admin mengganti pilihan di dropdown status.
-     */
+    // 2. MODIFIKASI TOMBOL SAVE
     protected function getSaveFormAction(): Action
     {
         return parent::getSaveFormAction()
@@ -62,11 +54,7 @@ class EditGroup extends EditRecord
             });
     }
 
-    /**
-     * 3. LOGIKA SETELAH SIMPAN
-     * Di sini kita menangani update status order peserta, pengiriman email,
-     * dan penambahan otomatis masa aktif (durasi).
-     */
+    // 3. LOGIKA SETELAH SIMPAN
     protected function afterSave(): void
     {
         $group = $this->getRecord();
@@ -74,42 +62,33 @@ class EditGroup extends EditRecord
         // --- A. LOGIKA JIKA STATUS COMPLETED ---
         if ($group->status === 'completed') {
 
-            // 1. Ambil & Update Semua Order Peserta yang valid (Paid/Processing)
+            // 1. Update Order
             $orders = $group->orders()->whereIn('status', ['paid', 'processing'])->get();
 
             foreach ($orders as $order) {
                 $order->update(['status' => 'completed']);
-
-                // Kirim Notifikasi Email
                 try {
                     if ($order->user && class_exists(OrderCompletedNotification::class)) {
                         $order->user->notify(new OrderCompletedNotification($order));
                     }
                 } catch (\Exception $e) {
-                    // Log error jika diperlukan, tapi jangan biarkan aplikasi crash
                 }
             }
 
-            // 2. UPDATE DURASI (Masa Aktif)
-            // Mengambil durasi (hari) dari varian produk yang dipilih
+            // 2. Update Durasi
             $group->load('variant');
             $variant = $group->variant;
 
             if ($variant && $variant->duration_days > 0) {
-                // Hitung Tanggal Expired: Hari Ini + Durasi Paket
                 $newExpired = now()->addDays((int) $variant->duration_days);
 
-                /**
-                 * Kita gunakan updateQuietly agar Filament tidak menjalankan
-                 * proses 'saving' berulang kali (mencegah loop tak terbatas).
-                 */
                 $group->updateQuietly([
                     'expired_at' => $newExpired
                 ]);
 
                 FilamentNotification::make()
-                    ->title('Grup & Akun Diaktifkan!')
-                    ->body("Email terkirim ke peserta. Durasi otomatis diset s.d " . $newExpired->format('d M Y'))
+                    ->title('Grup Diaktifkan!')
+                    ->body("Durasi otomatis diset s.d " . $newExpired->format('d M Y'))
                     ->success()
                     ->send();
             }
@@ -122,11 +101,16 @@ class EditGroup extends EditRecord
                 ->update(['status' => 'processing']);
         }
 
-        // --- C. LOGIKA JIKA STATUS EXPIRED / CLOSED ---
+        // --- C. LOGIKA JIKA STATUS EXPIRED / CLOSED (PERBAIKAN UTAMA DISINI) ---
         if (in_array($group->status, ['expired', 'closed'])) {
+
+            // PERBAIKAN: Masukkan 'completed' ke dalam pencarian.
+            // Tujuannya agar pesanan yang sudah selesai pun ikut kadaluarsa.
+            // Dengan status 'expired', slot grup dianggap kosong oleh sistem ID Recycling.
+
             $group->orders()
-                ->whereIn('status', ['paid', 'pending', 'processing'])
-                ->update(['status' => 'failed']);
+                ->whereIn('status', ['paid', 'pending', 'processing', 'completed']) // <--- Tambah 'completed'
+                ->update(['status' => 'expired']); // Ubah jadi expired
         }
     }
 }

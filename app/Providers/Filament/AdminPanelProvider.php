@@ -32,9 +32,10 @@ class AdminPanelProvider extends PanelProvider
             ->login()
             ->registration(Register::class)
             // --- TAMBAHKAN INI ---
-            ->brandName('SIRKELTA Admin') // Nama Aplikasi
+            ->brandName('SIRKELTA') // Nama Aplikasi
             ->brandLogoHeight('3rem') // Ukuran Logo (Opsional jika pakai gambar)
             ->favicon(asset('images/favicon.png')) // Ikon di tab browser (Opsional)
+            ->homeUrl(url('/'))
             ->colors([
                 'primary' => Color::Indigo,
             ])

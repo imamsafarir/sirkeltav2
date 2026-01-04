@@ -9,10 +9,18 @@ class HomeController extends Controller
 {
     public function index()
     {
-        // Ambil produk yang aktif saja
-        $products = Product::where('is_active', true)->get();
+        // 1. Ambil Produk
+        $products = \App\Models\Product::where('is_active', true)->get();
 
-        return view('home', compact('products'));
+        // 2. Ambil Grup yang sedang OPEN (untuk ditampilkan di Live Monitor)
+        $activeGroups = \App\Models\Group::with(['variant.product', 'orders.user'])
+            ->where('status', 'open')
+            ->where('expired_at', '>', now())
+            ->orderBy('created_at', 'desc')
+            ->take(6) // Tampilkan 6 grup terbaru saja biar rapi
+            ->get();
+
+        return view('home', compact('products', 'activeGroups'));
     }
 
     public function show(Product $product)
