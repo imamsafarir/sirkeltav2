@@ -3,7 +3,6 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\GroupResource\Pages;
-use App\Filament\Resources\GroupResource\RelationManagers;
 use App\Models\Group;
 use Illuminate\Support\Facades\Auth;
 use Filament\Forms;
@@ -11,14 +10,11 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 use App\Filament\Resources\GroupResource\RelationManagers\OrdersRelationManager;
 
 class GroupResource extends Resource
 {
     protected static ?string $model = Group::class;
-
     protected static ?string $navigationIcon = 'heroicon-o-user-group';
     protected static ?string $navigationLabel = 'Kelola Grup';
     protected static ?int $navigationSort = 1;
@@ -42,7 +38,7 @@ class GroupResource extends Resource
                             ->required(),
                     ])->columns(2),
 
-                // --- BAGIAN 2: PROSES ORDER (DIPERBAIKI) ---
+                // --- BAGIAN 2: PROSES ORDER ---
                 Forms\Components\Section::make('Proses Order & Kredensial')
                     ->description('Isi data akun saat status Processing atau Completed.')
                     ->schema([
@@ -55,9 +51,8 @@ class GroupResource extends Resource
                                 'expired' => 'Expired (Gagal)',
                             ])
                             ->required()
-                            ->reactive(), // PENTING: Agar form bereaksi live
+                            ->live(),
 
-                        // --- KREDENSIAL UMUM (Untuk Semua) ---
                         Forms\Components\Group::make()
                             ->schema([
                                 Forms\Components\TextInput::make('account_email')
@@ -72,14 +67,11 @@ class GroupResource extends Resource
                             ->columns(2)
                             ->visible(fn($get) => in_array($get('status'), ['processing', 'completed'])),
 
-                        // --- CATATAN SPESIFIK (TAGGING USER) ---
-                        // Ini fitur baru: Repeater untuk catatan khusus per user
                         Forms\Components\Repeater::make('additional_info')
                             ->label('Catatan / Pembagian Profil')
                             ->schema([
                                 Forms\Components\Select::make('user_id')
                                     ->label('Pilih Peserta')
-                                    // Ambil list user yang sudah join di grup ini
                                     ->options(function ($record) {
                                         if (!$record) return [];
                                         return $record->orders()
@@ -106,86 +98,44 @@ class GroupResource extends Resource
     {
         return $table
             ->columns([
-                // Menampilkan Brand (Netflix)
-                Tables\Columns\TextColumn::make('variant.product.name')
-                    ->label('Brand')
-                    ->sortable()
-                    ->searchable(),
-
-                // Menampilkan Paket (Premium 4K)
-                Tables\Columns\TextColumn::make('variant.name')
-                    ->label('Paket')
-                    ->searchable(),
-
-                // Menampilkan Status Warna-Warni
+                Tables\Columns\TextColumn::make('variant.product.name')->label('Brand')->sortable()->searchable(),
+                Tables\Columns\TextColumn::make('variant.name')->label('Paket')->searchable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn(string $state): string => match ($state) {
-                        'open' => 'success',    // Hijau
-                        'full' => 'warning',    // Kuning (Admin harus notice ini!)
-                        'processing' => 'info', // Biru
-                        'completed' => 'gray',  // Abu
-                        'expired' => 'danger',  // Merah
+                        'open' => 'success',
+                        'full' => 'warning',
+                        'processing' => 'info',
+                        'completed' => 'gray',
+                        'expired' => 'danger',
                     }),
 
-                // Menampilkan Slot: Terisi / Total
                 Tables\Columns\TextColumn::make('filled_slots')
                     ->label('Peserta')
                     ->badge()
                     ->color(fn(string $state): string => str_contains($state, 'PENUH') ? 'danger' : 'success')
                     ->getStateUsing(function (Group $record) {
-                        // 1. Ambil Total Slot
-                        // Pakai tanda tanya (?) biar gak error kalau produk dihapus
                         $maxSlots = $record->variant?->total_slots ?? 0;
-
-                        // 2. Hitung Peserta yang VALID saja
-                        // (Jangan hitung yang Failed/Canceled)
-                        $currentMembers = $record->orders()
-                            ->whereIn('status', ['paid', 'processing', 'completed', 'pending'])
-                            ->count();
-
-                        // 3. Cek Status Visual
-                        if ($maxSlots > 0 && $currentMembers >= $maxSlots) {
-                            return "{$currentMembers} / {$maxSlots} (PENUH)";
-                        }
-
-                        return "{$currentMembers} / {$maxSlots}";
+                        $currentMembers = $record->orders()->whereIn('status', ['paid', 'processing', 'completed', 'pending'])->count();
+                        return ($maxSlots > 0 && $currentMembers >= $maxSlots) ? "{$currentMembers} / {$maxSlots} (PENUH)" : "{$currentMembers} / {$maxSlots}";
                     }),
 
-                Tables\Columns\TextColumn::make('expired_at')
-                    ->dateTime()
-                    ->label('Berakhir Pada')
-                    ->sortable(),
+                Tables\Columns\TextColumn::make('expired_at')->dateTime()->label('Berakhir Pada')->sortable(),
             ])
             ->defaultSort('created_at', 'desc')
             ->filters([
-                //
-                // Filter biar Admin bisa cepat cari yang "Full" saja
                 Tables\Filters\SelectFilter::make('status')
-                    ->options([
-                        'open' => 'Open',
-                        'full' => 'Full',
-                        'completed' => 'Completed',
-                        'expired' => 'Expired',
-                    ]),
+                    ->options(['open' => 'Open', 'full' => 'Full', 'completed' => 'Completed', 'expired' => 'Expired']),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
             ]);
     }
 
     public static function getRelations(): array
     {
-        return [
-            // Daftarkan Relation Manager di sini
-            OrdersRelationManager::class,
-        ];
+        return [OrdersRelationManager::class];
     }
 
     public static function getPages(): array
@@ -197,19 +147,23 @@ class GroupResource extends Resource
         ];
     }
 
+    public static function canViewAny(): bool
+    {
+        return Auth::check() && Auth::user()->role === 'admin';
+    }
+
+    // --- BAGIAN BADGE NAVIGASI (DITAMBAHKAN KEMBALI) ---
+
     public static function getNavigationBadge(): ?string
     {
-        // Hitung grup yang FULL (Prioritas Admin!)
-        return static::getModel()::where('status', 'full')->count();
+        // Hitung grup yang statusnya 'full' (perlu tindakan admin)
+        $count = static::getModel()::where('status', 'full')->count();
+        return $count > 0 ? (string) $count : null;
     }
 
     public static function getNavigationBadgeColor(): ?string
     {
-        return static::getModel()::where('status', 'full')->count() > 0 ? 'danger' : 'gray';
-    }
-
-    public static function canViewAny(): bool
-    {
-        return Auth::check() && Auth::user()->role === 'admin';
+        // Warna merah (danger) jika ada grup yang penuh
+        return 'danger';
     }
 }

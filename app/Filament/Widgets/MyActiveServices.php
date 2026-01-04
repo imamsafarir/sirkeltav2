@@ -10,14 +10,15 @@ use App\Models\Order;
 
 class MyActiveServices extends BaseWidget
 {
-    protected static ?int $sort = 2; // Muncul di bawah statistik
-    protected int | string | array $columnSpan = 'full'; // Lebar penuh
-    protected static ?string $heading = 'Akun Premium Saya'; // Judul Tabel
+    protected static ?int $sort = 2;
+    protected int | string | array $columnSpan = 'full';
+    protected static ?string $heading = 'Akun Premium Saya';
 
-    // HANYA UNTUK CUSTOMER
+    // PERBAIKAN DI SINI: Izinkan Customer DAN Admin
     public static function canView(): bool
     {
-        return Auth::check() && Auth::user()->role === 'customer';
+        // Cek apakah user login, DAN role-nya adalah customer ATAU admin
+        return Auth::check() && in_array(Auth::user()->role, ['customer', 'admin']);
     }
 
     public function table(Table $table): Table
@@ -25,9 +26,8 @@ class MyActiveServices extends BaseWidget
         return $table
             ->query(
                 Order::query()
-                    ->where('user_id', Auth::id())
+                    ->where('user_id', Auth::id()) // Ini akan mengambil order milik Admin jika yang login Admin
                     ->where('status', 'completed')
-                    // PERBAIKAN 1: Filter hanya Product (Top Up jangan masuk sini)
                     ->where('type', 'product')
                     ->latest()
             )
@@ -35,7 +35,6 @@ class MyActiveServices extends BaseWidget
                 // Nama Produk (Netflix)
                 Tables\Columns\TextColumn::make('variant.product.name')
                     ->label('Layanan')
-                    // Gunakan Null Coalescing (??) biar aman
                     ->description(fn(Order $record) => $record->variant->name ?? '-')
                     ->icon('heroicon-o-film')
                     ->searchable(),
@@ -55,20 +54,17 @@ class MyActiveServices extends BaseWidget
                     ->copyable()
                     ->copyMessage('Password disalin!')
                     ->color('danger')
-                    ->fontFamily('mono') // Font ala koding biar jelas beda huruf I dan l
+                    ->fontFamily('mono')
                     ->placeholder('Menunggu Admin...'),
 
-                // PERBAIKAN 2: CATATAN SPESIFIK USER (TAGGING)
-                // Kita ganti logika additional_info agar membaca array JSON
+                // CATATAN SPESIFIK USER (TAGGING)
                 Tables\Columns\TextColumn::make('custom_note')
                     ->label('Catatan Admin')
                     ->state(function (Order $record) {
-                        // Ambil data JSON dari grup
                         $notes = $record->group->additional_info ?? [];
-
-                        // Cari catatan untuk user yang sedang login ini
                         if (is_array($notes)) {
                             foreach ($notes as $item) {
+                                // Cek apakah catatan ini untuk user yang sedang login
                                 if (isset($item['user_id']) && $item['user_id'] == Auth::id()) {
                                     return $item['note'];
                                 }
@@ -76,10 +72,9 @@ class MyActiveServices extends BaseWidget
                         }
                         return '-';
                     })
-                    ->wrap() // Agar teks panjang turun ke bawah
+                    ->wrap()
                     ->color('warning')
                     ->weight('bold'),
-                // SAYA SUDAH HAPUS TOOLTIP DISINI AGAR TIDAK ERROR LAGI
 
                 // Expired Kapan?
                 Tables\Columns\TextColumn::make('group.expired_at')
@@ -89,7 +84,6 @@ class MyActiveServices extends BaseWidget
                     ->color('gray'),
             ])
             ->actions([
-                // Tombol Komplain
                 Tables\Actions\Action::make('lapor')
                     ->label('Lapor')
                     ->icon('heroicon-o-exclamation-triangle')

@@ -232,19 +232,62 @@ class WebOrderController extends Controller
         Config::$is3ds = config('midtrans.is_3ds');
     }
 
+    // --- GANTI METHOD findOrCreateGroup DENGAN INI ---
     private function findOrCreateGroup($variant)
     {
-        $candidates = Group::where('product_variant_id', $variant->id)
-            ->where('status', 'open')->where('expired_at', '>', now())
-            ->orderBy('id', 'asc')->lockForUpdate()->get();
+        // LOGIKA BARU: RECYCLING ID (ID TERKECIL)
 
-        foreach ($candidates as $candidate) {
-            if ($candidate->orders()->whereIn('status', ['paid', 'processing', 'completed', 'pending'])->count() < ($variant->total_slots ?? 5)) {
-                return $candidate;
+        // 1. Cari Grup 'OPEN' dengan ID Terkecil
+        $openGroup = Group::where('product_variant_id', $variant->id)
+            ->where('status', 'open')
+            ->where('expired_at', '>', now()) // Pastikan belum expired secara waktu
+            ->orderBy('id', 'asc') // PENTING: Ambil ID terkecil
+            ->lockForUpdate()
+            ->first();
+
+        // Cek kapasitas grup open tersebut
+        if ($openGroup) {
+            $currentMembers = $openGroup->orders()
+                ->whereIn('status', ['paid', 'processing', 'completed', 'pending'])
+                ->count();
+
+            // Jika masih muat, pakai grup ini
+            if ($currentMembers < ($variant->total_slots ?? 5)) {
+                return $openGroup;
             } else {
-                $candidate->update(['status' => 'full']);
+                // Jika ternyata sudah penuh, tandai 'full' dan lanjut cari yang lain
+                $openGroup->update(['status' => 'full']);
             }
         }
+
+        // 2. Jika tidak ada yang Open, Cari Grup 'EXPIRED' Lama untuk Didaur Ulang (Recycle)
+        $expiredGroup = Group::where('product_variant_id', $variant->id)
+            ->where('status', 'expired')
+            ->orderBy('id', 'asc') // Ambil ID Expired terkecil
+            ->lockForUpdate()
+            ->first();
+
+        if ($expiredGroup) {
+            // BERSIHKAN & RESET GRUP LAMA
+            $expiredGroup->update([
+                'status' => 'open', // Buka kembali
+                'name' => $variant->name . ' - ' . Str::random(5), // Rename biar fresh
+                'account_email' => null, // Hapus data login lama
+                'account_password' => null,
+                'additional_info' => [], // Kosongkan catatan
+                'expired_at' => now()->addHours($variant->group_timeout_hours ?? 24) // Reset waktu
+            ]);
+
+            // PENTING: Putuskan hubungan dengan order masa lalu
+            // (Order lama biarkan, tapi group_id-nya dinull-kan atau biarkan statusnya completed/expired di history)
+            // Di sini kita biarkan relasi lama tetap ada untuk history, tapi slot dihitung dari status order yang 'active'
+            // Karena order lama statusnya pasti 'expired' atau 'completed' (sudah lewat),
+            // maka saat dihitung $currentMembers nanti, order lama tidak akan terhitung sebagai member aktif.
+
+            return $expiredGroup;
+        }
+
+        // 3. Jika tidak ada Open dan tidak ada Expired, Buat Grup Baru
         return Group::create([
             'name' => $variant->name . ' - ' . Str::random(5),
             'product_variant_id' => $variant->id,

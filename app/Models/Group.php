@@ -48,9 +48,12 @@ class Group extends Model
             // 3. Jika Admin ubah Grup jadi 'expired' / 'closed'
             // Tandai order jadi failed/canceled (Opsional)
             if ($group->isDirty('status') && in_array($group->status, ['expired', 'closed'])) {
+
+                // Ubah status order yang masih aktif menjadi expired/failed
+                // Tambahkan 'completed' juga jika Anda ingin masa aktif user habis saat grup expired
                 $group->orders()
-                    ->whereIn('status', ['pending', 'paid'])
-                    ->update(['status' => 'failed']);
+                    ->whereIn('status', ['pending', 'paid', 'processing', 'completed'])
+                    ->update(['status' => 'expired']); // Pastikan status 'expired' ada di enum Order
             }
         });
     }

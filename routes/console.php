@@ -1,14 +1,11 @@
 <?php
 
 use Illuminate\Support\Facades\Schedule;
-use App\Console\Commands\CheckExpiredGroups;
-use App\Console\Commands\CleanUpEmptyGroups;
+use App\Console\Commands\ProcessExpiredGroups;
 
-// Jalankan perintah cek expired setiap menit
-Schedule::command(CheckExpiredGroups::class)->everyMinute();
 
-// Perintah ini akan jalan setiap hari pada tengah malam
-Schedule::command(CleanUpEmptyGroups::class)->daily();
+// Jalankan pengecekan grup expired setiap menit
+Schedule::command(ProcessExpiredGroups::class)->everyMinute();
 
 // Tips Pemula:
 // Nanti di server asli, kamu harus setup Cron Job agar script ini jalan.

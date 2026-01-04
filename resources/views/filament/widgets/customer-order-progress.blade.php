@@ -11,7 +11,7 @@
                 <div>
                     <h2 class="text-lg font-bold text-gray-800 dark:text-white">Status Pesanan Terkini</h2>
                     <p class="text-sm text-gray-500 dark:text-gray-400">
-                        {{-- PERBAIKAN DI SINI: Cek Tipe Order --}}
+                        {{-- Cek Tipe Order --}}
                         Produk: <span class="font-bold" style="color: #4f46e5;">
                             @if ($order->type === 'topup')
                                 Top Up Saldo
@@ -93,8 +93,7 @@
                             style="background-color: {{ $progress >= 100 ? $colorGreen : $colorGray }}; color: {{ $progress >= 100 ? 'white' : '#6b7280' }};">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                    d="M5 13l4 4L19 7">
-                                </path>
+                                    d="M5 13l4 4L19 7"></path>
                             </svg>
                         </div>
                         <span class="text-xs font-bold mt-2"
@@ -112,8 +111,13 @@
                 @elseif($status === 'paid')
                     <p class="font-bold text-lg" style="color: #3b82f6;">💰 Pembayaran Dikonfirmasi!</p>
                     <p class="text-gray-600 dark:text-gray-300 mt-1">Admin akan segera memproses pesanan Anda.</p>
+                @elseif($status === 'completed')
+                    {{-- PERBAIKAN DI SINI: --}}
+                    <p class="font-bold text-lg" style="color: #22c55e;">✅ Pesanan Selesai!</p>
+                    <p class="text-gray-600 dark:text-gray-300 mt-1">
+                        Silakan cek <b>Tabel Akun Premium</b> di bawah untuk melihat email & password akun Anda.
+                    </p>
                 @else
-                    {{-- Status lainnya tetap sama --}}
                     <p class="font-bold text-lg" style="color: #8b5cf6;">⚙️ Sedang Diproses</p>
                 @endif
             </div>
